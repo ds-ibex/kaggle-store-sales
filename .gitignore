@@ -1,3 +1,10 @@
+# Mac specific
+.DS_Store
+
+# Data is not stored on git, see below:
+# https://ericmjl.github.io/data-science-bootstrap-notes/never-commit-data-into-version-control-repositories/
+data/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

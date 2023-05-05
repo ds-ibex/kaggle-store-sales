@@ -13,7 +13,6 @@ Repository for the [Store Sales - Time Series Forecasting](https://www.kaggle.co
 
 
 ## Instructions for use
----
 
 ### Conda
 

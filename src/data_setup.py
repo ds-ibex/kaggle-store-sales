@@ -5,13 +5,6 @@ import os
 import gc
 from pathlib import Path
 
-
-# folder = 'C:/Users/eflanag/OneDrive - FTI Consulting/Documents/Projects/Ibex_EF/IbexV2/ibexgit/kaggle-store-sales/data/'
-train = 0
-test = 0 
-stores = 0
-transactions = 0
-
 # Define Gloabl Path Variables
 # ------------------------------------------------------
 current_directory = os.getcwd()
@@ -20,7 +13,6 @@ parent_directory = os.path.abspath(os.path.join(current_directory, os.pardir))
 print("Parent directory:", parent_directory)
 
 DATA_PATH = Path(parent_directory) / 'data'
-print(os.listdir(DATA_PATH))
 assert 'raw' in os.listdir(DATA_PATH), 'Data directory not structured properly, see readme.md'
 
 RAW_PATH = DATA_PATH / 'raw'
@@ -85,6 +77,7 @@ def get_data():
         # add in year and month
         df['year'] = df['date'].dt.year
         df['month'] = df['date'].dt.month
+        df['day_of_week'] = df['date'].dt.dayofweek
     train, test, transactions = dfs_with_date
 
     # smaller floats
@@ -96,8 +89,16 @@ def get_data():
     train = train.set_index('id')
     test = test.set_index('id')
     stores = stores.set_index('store_nbr')
-    
     return train, test, stores, transactions
+
+
+def get_daily_sales(df):
+    df = df.groupby(["date"]).sales.sum().reset_index()
+    df["year"] = df.date.dt.year
+    df["month"] = df.date.dt.month
+    df['day_of_week'] = df['date'].dt.dayofweek
+    return df
+
 
 def process_holiday_events():
     train, test, stores, transactions = get_data()
@@ -258,9 +259,6 @@ def oil_setup():
 
 
 def get_oil_holiday_data():
-    global train, test, stores, transactions
-    train, test, stores, transactions = get_data()
-
     d = process_holiday_events()
     oil = oil_setup()
     d = pd.merge(d, oil, how = "left", on = ["date"])

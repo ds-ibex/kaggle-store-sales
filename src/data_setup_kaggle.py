@@ -293,5 +293,5 @@ def get_data():
     return d
 
 d = get_data()   
+print('\ndata setup complete!')
 print(d.shape)
-print('complete')

@@ -1,49 +1,16 @@
-# BASE
-# ------------------------------------------------------
+# Standard imports
 import numpy as np
 import pandas as pd
 import os
 import gc
-import warnings
 from pathlib import Path
-#!pip install xgboost
-import sklearn
-from sklearn import linear_model
-from sklearn.linear_model  import LinearRegression
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.datasets import make_regression
-import xgboost as xgb
-from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split, TimeSeriesSplit 
-from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_squared_log_error, r2_score
-pd.set_option('display.max_colwidth', None)
-import statsmodels.api as sm
 
 
-from pandas import datetime
-from pandas import read_csv
-from pandas import DataFrame
-from statsmodels.tsa.arima.model import ARIMA
-from matplotlib import pyplot
-
-# DATA VISUALIZATION
-# ------------------------------------------------------
-import matplotlib.pyplot as plt
-import seaborn as sns
-import plotly.express as px
-import plotly.graph_objects as go
-
-# CONFIGURATIONS
-# ------------------------------------------------------
-pd.set_option('display.max_columns', None)
-pd.options.display.float_format = '{:.2f}'.format
-warnings.filterwarnings('ignore')
-folder = 'C:/Users/eflanag/OneDrive - FTI Consulting/Documents/Projects/Ibex_EF/IbexV2/ibexgit/kaggle-store-sales/data/'
+# folder = 'C:/Users/eflanag/OneDrive - FTI Consulting/Documents/Projects/Ibex_EF/IbexV2/ibexgit/kaggle-store-sales/data/'
 train = 0
 test = 0 
 stores = 0
-
-transactions =0
+transactions = 0
 
 # Define Gloabl Path Variables
 # ------------------------------------------------------
@@ -52,77 +19,103 @@ parent_directory = os.path.abspath(os.path.join(current_directory, os.pardir))
 
 print("Parent directory:", parent_directory)
 
-DATA_PATH = Path(parent_directory)
+DATA_PATH = Path(parent_directory) / 'data'
+print(os.listdir(DATA_PATH))
+assert 'raw' in os.listdir(DATA_PATH), 'Data directory not structured properly, see readme.md'
+
 RAW_PATH = DATA_PATH / 'raw'
+PROCESSED_PATH = DATA_PATH / 'processed'
+SUBMISSION_PATH = DATA_PATH / 'submissions'
+
 TRAIN_PATH = RAW_PATH / 'train.csv'
 TEST_PATH = RAW_PATH / 'test.csv'
-DATA_PATH
+HOLIDAYS_PATH = RAW_PATH / 'holidays_events.csv'
+TRANSACTIONS_PATH = RAW_PATH / 'transactions.csv'
+STORES_PATH = RAW_PATH / 'stores.csv'
+OIL_PATH = RAW_PATH / 'oil.csv'
 
+""" Old code to downlaod data from kaggle, works on mac but needs changes to work on windows
+if 'data' not in os.listdir('..') or 'raw' not in os.listdir('../data'):
+    print('\ndownloading kaggle data...')
+    ! mkdir ../data
+    ! mkdir ../data/raw
+    ! mkdir ../data/processed
+    ! kaggle competitions download -c store-sales-time-series-forecasting
+    ! unzip store-sales-time-series-forecasting.zip
+    ! mv *.csv ../data/raw
+    ! rm store-sales-time-series-forecasting.zip
+    ! mkdir ../data/submissions
+    ! mv ../data/raw/*_submission* ../data/submissions/
+else:
+    print('kaggle data already downloaded in ../data')"""
 
+def get_data():
+    """Load processed dataframes for train, test, stores, transactions
 
+    Returns:
+        tuple: four dataframes (train, test, stores, transactions)
+    """
+    
+    # TODO refactor this to use pickle and the processed data sections
 
-# # Downlaod data from kaggle
-# # ------------------------------------------------------
-# if 'data' not in os.listdir('..') or 'raw' not in os.listdir('../data'):
-#     print('\ndownloading kaggle data...')
-#     ! mkdir ../data
-#     ! mkdir ../data/raw
-#     ! mkdir ../data/processed
-#     ! kaggle competitions download -c store-sales-time-series-forecasting
-#     ! unzip store-sales-time-series-forecasting.zip
-#     ! mv *.csv ../data/raw
-#     ! rm store-sales-time-series-forecasting.zip
-#     ! mkdir ../data/submissions
-#     ! mv ../data/raw/*_submission* ../data/submissions/
-# else:
-#     print('kaggle data already downloaded in ../data')
+    # Read data files into dataframes
+    train = pd.read_csv(TRAIN_PATH)
+    test = pd.read_csv(TEST_PATH)
+    stores = pd.read_csv(STORES_PATH)
+    transactions = pd.read_csv(TRANSACTIONS_PATH).sort_values(['store_nbr', 'date'])
 
-def inport_base():
-    # Import data
-    train = pd.read_csv(folder+"train.csv")
-    test = pd.read_csv(folder+"test.csv")
-    stores = pd.read_csv(folder+"stores.csv")
-    #sub = pd.read_csv("../input/store-sales-time-series-forecasting/sample_submission.csv")   
-    transactions = pd.read_csv(folder+"transactions.csv").sort_values(["store_nbr", "date"])
+    # Convert to more memory efficient datatypes
 
+    # Transactions has a max of 8359, int32 < 4 million
+    transactions['transactions'] = transactions['transactions'].astype('int32')
+    stores['cluster'] = stores.cluster.astype('int8')
 
-    # Datetime
-    train["date"] = pd.to_datetime(train.date)
-    test["date"] = pd.to_datetime(test.date)
-    transactions["date"] = pd.to_datetime(transactions.date)
+    # Store Number has a max of 54, int8 < 256
+    store_nbr_list = [train, test, stores]
+    for df in store_nbr_list:
+        df['store_nbr'] = df['store_nbr'].astype('int8')
+    # python is pass by assignment so pass them back to the original objects
+    train, test, stores = store_nbr_list
 
-    # Data types
-    train.onpromotion = train.onpromotion.astype("float16")
-    train.sales = train.sales.astype("float32")
-    stores.cluster = stores.cluster.astype("int8")
+    # list to process dates
+    dfs_with_date = [train, test, transactions]
+    for df in dfs_with_date:
+        # convert to a datetime object
+        df['date'] = pd.to_datetime(train.date)     
+        # add in year and month
+        df['year'] = df['date'].dt.year
+        df['month'] = df['date'].dt.month
+    train, test, transactions = dfs_with_date
 
-    h=900
-
-    train.head()
+    # smaller floats
+    train['onpromotion'] = train.onpromotion.astype('float32')
+    test['onpromotion'] = test.onpromotion.astype('float32')
+    train['sales'] = train.sales.astype('float32')
+    
+    # set indexes
+    train = train.set_index('id')
+    test = test.set_index('id')
+    stores = stores.set_index('store_nbr')
+    
     return train, test, stores, transactions
 
 def process_holiday_events():
-    global train, test, stores, transactions
+    train, test, stores, transactions = get_data()
+    
     #Import holiday data
-    holidays = pd.read_csv(folder+"holidays_events.csv")
+    holidays = pd.read_csv(HOLIDAYS_PATH)
     holidays["date"] = pd.to_datetime(holidays.date)
     holidays
-
-
-    # holidays[holidays.type == "Holiday"]
-    # holidays[(holidays.type == "Holiday") & (holidays.transferred == True)]
 
     # Transferred Holidays
     tr1 = holidays[(holidays.type == "Holiday") & (holidays.transferred == True)].drop("transferred", axis = 1).reset_index(drop = True)
     tr2 = holidays[(holidays.type == "Transfer")].drop("transferred", axis = 1).reset_index(drop = True)
     tr = pd.concat([tr1,tr2], axis = 1)
     tr = tr.iloc[:, [5,1,2,3,4]]
-
-    tr
+    # TODO @Eoin can you add comments here
 
     holidays = holidays[(holidays.transferred == False) & (holidays.type != "Transfer")].drop("transferred", axis = 1)
     holidays = holidays.append(tr).reset_index(drop = True)
-
 
     # Additional Holidays
     holidays["description"] = holidays["description"].str.replace("-", "").str.replace("+", "").str.replace('\d+', '')
@@ -131,12 +124,10 @@ def process_holiday_events():
     # Bridge Holidays
     holidays["description"] = holidays["description"].str.replace("Puente ", "")
     holidays["type"] = np.where(holidays["type"] == "Bridge", "Holiday", holidays["type"])
-
     
     # Work Day Holidays, that is meant to payback the Bridge.
     work_day = holidays[holidays.type == "Work Day"]  
     holidays = holidays[holidays.type != "Work Day"]  
-
 
     # Split
 
@@ -148,16 +139,14 @@ def process_holiday_events():
     national = holidays[holidays.locale == "National"].rename({"description":"holiday_national"}, axis = 1).drop(["locale", "locale_name"], axis = 1).drop_duplicates()
     local = holidays[holidays.locale == "Local"].rename({"description":"holiday_local", "locale_name":"city"}, axis = 1).drop("locale", axis = 1).drop_duplicates()
 
+    # TODO can this be refactored to be a bool? (will make processing faster)
     test['test/train'] = 'test'
     train['test/train'] = 'train'
-
 
     d = pd.merge(train.append(test), stores)
     d["store_nbr"] = d["store_nbr"].astype("int8")
 
-
     # National Holidays & Events
-    #d = pd.merge(d, events, how = "left")
     d = pd.merge(d, national, how = "left")
     # Regional
     d = pd.merge(d, regional, how = "left", on = ["date", "state"])
@@ -168,11 +157,10 @@ def process_holiday_events():
     # Work Day: It will be removed when real work day colum created
     d = pd.merge(d,  work_day[["date", "type"]].rename({"type":"IsWorkDay"}, axis = 1),how = "left")
 
-
-
     # EVENTS
     events["events"] =np.where(events.events.str.contains("futbol"), "Futbol", events.events)
 
+    # is there a reason we are not using an existing one hot encoder like sklearn's?
     def one_hot_encoder(df, nan_as_category=True):
         original_columns = list(df.columns)
         categorical_columns = df.select_dtypes(["category", "object"]).columns.tolist()
@@ -182,14 +170,13 @@ def process_holiday_events():
         df.columns = df.columns.str.replace(" ", "_")
         return df, df.columns.tolist()
 
+    # TODO add comments to this
     events, events_cat = one_hot_encoder(events, nan_as_category=False)
     events["events_Dia_de_la_Madre"] = np.where(events.date == "2016-05-08", 1,events["events_Dia_de_la_Madre"])
     events = events.drop(239)
 
     d = pd.merge(d, events, how = "left")
     d[events_cat] = d[events_cat].fillna(0)
-
-
 
     # New features
     d["holiday_national_binary"] = np.where(d.holiday_national.notnull(), 1, 0)
@@ -202,22 +189,17 @@ def process_holiday_events():
     d["local_fundacion"] = np.where(d.holiday_local.str.contains("Fundacion"), 1, 0)
     d["local_independencia"] = np.where(d.holiday_local.str.contains("Independencia"), 1, 0)
 
-
     holidays, holidays_cat = one_hot_encoder(d[["holiday_national","holiday_regional","holiday_local"]], nan_as_category=False)
     d = pd.concat([d.drop(["holiday_national","holiday_regional","holiday_local"], axis = 1),holidays], axis = 1)
-
-
 
     he_cols = d.columns[d.columns.str.startswith("events")].tolist() + d.columns[d.columns.str.startswith("holiday")].tolist() + d.columns[d.columns.str.startswith("national")].tolist()+ d.columns[d.columns.str.startswith("local")].tolist()
     d[he_cols] = d[he_cols].astype("int8")
 
-    d
-
     d[["test/train","family", "city", "state", "type"]] = d[["test/train","family", "city", "state", "type"]].astype("category")
 
+    # what are we doing here?
     del holidays, holidays_cat, work_day, local, regional, national, events, events_cat, tr, tr1, tr2, he_cols
     gc.collect()
-
 
 
     # Inegrate Holidays data
@@ -246,14 +228,8 @@ def process_holiday_events():
         df["season"] = np.where(df.month.isin([6,7,8]), 2, df["season"])
         df["season"] = pd.Series(np.where(df.month.isin([9, 10, 11]), 3, df["season"])).astype("int8")
         return df
-    #d["date"] = pd.to_datetime(d.date, errors='coerce')
-    #d = d.dropna()
-    #d = get_date_data()
 
     d = create_date_features(d)
-
-
-
 
     # Workday column
     d["workday"] = np.where((d.holiday_national_binary == 1) | (d.holiday_local_binary==1) | (d.holiday_regional_binary==1) | (d['day_of_week'].isin([6,7])), 0, 1)
@@ -264,14 +240,12 @@ def process_holiday_events():
     # Supermarket sales could be affected by this.
     d["wageday"] = pd.Series(np.where((d['is_month_end'] == 1) | (d["day_of_month"] == 15), 1, 0)).astype("int8")
 
-    d.tail(15)
-    d.shape
     return d
 
 
 def oil_setup():
     # Import 
-    oil = pd.read_csv(folder+"/oil.csv")
+    oil = pd.read_csv(OIL_PATH)
     oil["date"] = pd.to_datetime(oil.date)
     # Resample
     oil = oil.set_index("date").dcoilwtico.resample("D").sum().reset_index()
@@ -283,15 +257,15 @@ def oil_setup():
     return oil
 
 
-def get_data():
+def get_oil_holiday_data():
     global train, test, stores, transactions
-    train, test, stores, transactions = inport_base()
+    train, test, stores, transactions = get_data()
 
     d = process_holiday_events()
     oil = oil_setup()
     d = pd.merge(d, oil, how = "left", on = ["date"])
     return d
 
-d = get_data()   
-print(d.shape)
-print('complete')
+# d = get_data()   
+# print(d.shape)
+# print('complete')

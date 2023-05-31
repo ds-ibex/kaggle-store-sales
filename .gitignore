@@ -5,6 +5,9 @@
 # https://ericmjl.github.io/data-science-bootstrap-notes/never-commit-data-into-version-control-repositories/
 data/
 
+# sandbox notebooks, denoted 0.x-inititals-description.ipynb are not stored on git
+0.*.ipynb
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

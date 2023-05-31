@@ -1,18 +1,16 @@
 # Standard imports
-import numpy as np
-import pandas as pd
-import os
 import gc
+import numpy as np
+import os
+import pandas as pd
 from pathlib import Path
 
 # Define Gloabl Path Variables
-# ------------------------------------------------------
-current_directory = os.getcwd()
-parent_directory = os.path.abspath(os.path.join(current_directory, os.pardir))
+# current_directory = os.getcwd()
+# parent_directory = os.path.abspath(os.path.join(current_directory, os.pardir))
 
-print("Parent directory:", parent_directory)
-
-DATA_PATH = Path(parent_directory) / 'data'
+ROOT_PATH = Path(os.path.dirname(os.getcwd()))
+DATA_PATH = ROOT_PATH / 'data'
 assert 'raw' in os.listdir(DATA_PATH), 'Data directory not structured properly, see readme.md'
 
 RAW_PATH = DATA_PATH / 'raw'
@@ -89,18 +87,67 @@ def get_data():
     train = train.set_index('id')
     test = test.set_index('id')
     stores = stores.set_index('store_nbr')
+    
     return train, test, stores, transactions
 
 
 def get_daily_sales(df):
+    """Take a dataframe, group it by date and aggregate sales
+
+    Args:
+        df (dataframe): dataframe with sales data
+
+    Returns:
+        df: aggregated dataframe with daily sales 
+    """
     df = df.groupby(["date"]).sales.sum().reset_index()
     df["year"] = df.date.dt.year
     df["month"] = df.date.dt.month
     df['day_of_week'] = df['date'].dt.dayofweek
+    df = df.set_index('date')
     return df
 
 
+# Time Related Features
+def create_date_features(df):
+    """_summary_
+
+    Args:
+        df (_type_): _description_
+
+    Returns:
+        _type_: _description_
+    """
+    df['month'] = df.date.dt.month.astype("int8")
+    df['day_of_month'] = df.date.dt.day.astype("int8")
+    df['day_of_year'] = df.date.dt.dayofyear.astype("int16")
+    #df['week_of_month'] = (df.date.apply(lambda d: (d.day-1) // 7 + 1)).astype("int8")
+    df['week_of_month'] = ((df['day_of_month']-1) // 7 + 1).astype("int8")
+
+
+    df['week_of_year'] = (df.date.dt.weekofyear).astype("int8")
+    df['day_of_week'] = (df.date.dt.dayofweek + 1).astype("int8")
+    df['year'] = df.date.dt.year.astype("int32")
+    df["is_wknd"] = (df.date.dt.weekday // 4).astype("int8")
+    df["quarter"] = df.date.dt.quarter.astype("int8")
+    df['is_month_start'] = df.date.dt.is_month_start.astype("int8")
+    df['is_month_end'] = df.date.dt.is_month_end.astype("int8")
+    df['is_quarter_start'] = df.date.dt.is_quarter_start.astype("int8")
+    df['is_quarter_end'] = df.date.dt.is_quarter_end.astype("int8")
+    df['is_year_start'] = df.date.dt.is_year_start.astype("int8")
+    df['is_year_end'] = df.date.dt.is_year_end.astype("int8")
+    # 0: Winter - 1: Spring - 2: Summer - 3: Fall
+    df["season"] = np.where(df.month.isin([12,1,2]), 0, 1)
+    df["season"] = np.where(df.month.isin([6,7,8]), 2, df["season"])
+    df["season"] = pd.Series(np.where(df.month.isin([9, 10, 11]), 3, df["season"])).astype("int8")
+    return df
+
 def process_holiday_events():
+    """_summary_
+
+    Returns:
+        _type_: _description_
+    """
     train, test, stores, transactions = get_data()
     
     #Import holiday data
@@ -180,6 +227,7 @@ def process_holiday_events():
     d[events_cat] = d[events_cat].fillna(0)
 
     # New features
+    # NOTE - could we just use fillna here?
     d["holiday_national_binary"] = np.where(d.holiday_national.notnull(), 1, 0)
     d["holiday_local_binary"] = np.where(d.holiday_local.notnull(), 1, 0)
     d["holiday_regional_binary"] = np.where(d.holiday_regional.notnull(), 1, 0)
@@ -204,31 +252,6 @@ def process_holiday_events():
 
 
     # Inegrate Holidays data
-    # Time Related Features
-    def create_date_features(df):
-        df['month'] = df.date.dt.month.astype("int8")
-        df['day_of_month'] = df.date.dt.day.astype("int8")
-        df['day_of_year'] = df.date.dt.dayofyear.astype("int16")
-        #df['week_of_month'] = (df.date.apply(lambda d: (d.day-1) // 7 + 1)).astype("int8")
-        df['week_of_month'] = ((df['day_of_month']-1) // 7 + 1).astype("int8")
-
-
-        df['week_of_year'] = (df.date.dt.weekofyear).astype("int8")
-        df['day_of_week'] = (df.date.dt.dayofweek + 1).astype("int8")
-        df['year'] = df.date.dt.year.astype("int32")
-        df["is_wknd"] = (df.date.dt.weekday // 4).astype("int8")
-        df["quarter"] = df.date.dt.quarter.astype("int8")
-        df['is_month_start'] = df.date.dt.is_month_start.astype("int8")
-        df['is_month_end'] = df.date.dt.is_month_end.astype("int8")
-        df['is_quarter_start'] = df.date.dt.is_quarter_start.astype("int8")
-        df['is_quarter_end'] = df.date.dt.is_quarter_end.astype("int8")
-        df['is_year_start'] = df.date.dt.is_year_start.astype("int8")
-        df['is_year_end'] = df.date.dt.is_year_end.astype("int8")
-        # 0: Winter - 1: Spring - 2: Summer - 3: Fall
-        df["season"] = np.where(df.month.isin([12,1,2]), 0, 1)
-        df["season"] = np.where(df.month.isin([6,7,8]), 2, df["season"])
-        df["season"] = pd.Series(np.where(df.month.isin([9, 10, 11]), 3, df["season"])).astype("int8")
-        return df
 
     d = create_date_features(d)
 

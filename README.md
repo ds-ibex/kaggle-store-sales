@@ -14,6 +14,25 @@ Repository for the [Store Sales - Time Series Forecasting](https://www.kaggle.co
 
 ## Instructions for use
 
+
+
+### Data folder
+
+The data folder should be as follows:
+```unix
+data/
+├── processed/
+├── raw/
+│   ├── holidays_events.csv
+│   ├── oil.csv
+│   ├── stores.csv
+│   ├── test.csv
+│   ├── train.csv
+│   └── transactions.csv
+└── submissions/
+    └── sample_submission.csv
+```
+
 ### Conda
 
 There is an `environment.yml` file in the root of the directory used to set up a conda environment. To create the environement, run:
@@ -30,6 +49,10 @@ If you have added required packages to the conda environment, it can be updated 
 ```bash
 conda env export > environment.yml
 ```
+
+### Notebooks
+
+TODO
 
 ### Kaggle
 

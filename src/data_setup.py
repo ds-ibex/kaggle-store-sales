@@ -5,10 +5,7 @@ import os
 import pandas as pd
 from pathlib import Path
 
-# Define Gloabl Path Variables
-# current_directory = os.getcwd()
-# parent_directory = os.path.abspath(os.path.join(current_directory, os.pardir))
-
+# Define gloabl path variables
 ROOT_PATH = Path(os.path.dirname(os.getcwd()))
 DATA_PATH = ROOT_PATH / 'data'
 assert 'raw' in os.listdir(DATA_PATH), 'Data directory not structured properly: kaggle-store-sales/data/raw does not exist, see readme.md for proper structure'
@@ -25,21 +22,7 @@ if 'processed' not in os.listdir(DATA_PATH):
 if 'submissions' not in os.listdir(DATA_PATH):
     print(f'Creating directory: {SUBMISSION_PATH}')
     os.mkdir(SUBMISSION_PATH)
-
-""" Old code to downlaod data from kaggle, works on mac but needs changes to work on windows
-if 'data' not in os.listdir('..') or 'raw' not in os.listdir('../data'):
-    print('\ndownloading kaggle data...')
-    ! mkdir ../data
-    ! mkdir ../data/raw
-    ! mkdir ../data/processed
-    ! kaggle competitions download -c store-sales-time-series-forecasting
-    ! unzip store-sales-time-series-forecasting.zip
-    ! mv *.csv ../data/raw
-    ! rm store-sales-time-series-forecasting.zip
-    ! mkdir ../data/submissions
-    ! mv ../data/raw/*_submission* ../data/submissions/
-else:
-    print('kaggle data already downloaded in ../data')"""
+    
 
 def get_data():
     """Load processed dataframes for train, test, stores, transactions
@@ -84,12 +67,10 @@ def get_data():
     dfs_with_date = [train, test, transactions]
     for df in dfs_with_date:
         # convert to a datetime object
-        df['date'] = pd.to_datetime(train.date)     
-        # add in year and month
-        df['year'] = df['date'].dt.year
-        df['month'] = df['date'].dt.month
-        df['day_of_week'] = df['date'].dt.dayofweek
-    train, test, transactions = dfs_with_date
+        df['date'] = pd.to_datetime(train.date)   
+    
+    # add date features
+    train, test, transactions = tuple(create_date_features(df) for df in dfs_with_date)
 
     # smaller floats
     train['onpromotion'] = train.onpromotion.astype('float32')
@@ -112,6 +93,29 @@ def get_data():
     return dfs
 
 
+def train_val_split(train=None, val_weeks=4):
+    """ Split the training data into train and validation data.
+        Validation data will be the last val_weeks number of weeks from the training data.
+
+    Args:
+        train (df, optional): training data as a dataframe. Defaults to None and loads the dataframe using get_data().
+        val_weeks (int, optional): number of weeks to set as validation data. Defaults to 4.
+
+    Returns:
+        tuple: train df, validation df
+    """
+    
+    # if train was not passed, take it from the get data function
+    if train is None:
+        train = get_data()[0]
+    
+    cutoff = train['date'].max() - pd.DateOffset(weeks=val_weeks)
+    
+    train_cutoff = train[train['date'] < cutoff]
+    val = train[train['date'] >= cutoff]
+    return train_cutoff, val
+    
+
 def get_daily_sales(df):
     """Take a dataframe, group it by date and aggregate sales
 
@@ -129,7 +133,6 @@ def get_daily_sales(df):
     return df
 
 
-# Time Related Features
 def create_date_features(df):
     """_summary_
 
@@ -139,13 +142,13 @@ def create_date_features(df):
     Returns:
         _type_: _description_
     """
+    df['year'] = df.date.dt.isocalendar().year.astype("int32")
     df['month'] = df.date.dt.month.astype("int8")
+    df['week'] = df.date.dt.isocalendar().week.astype("int8")
+    df['day_of_week'] = df.date.dt.isocalendar().day.astype("int8")
     df['day_of_month'] = df.date.dt.day.astype("int8")
     df['day_of_year'] = df.date.dt.dayofyear.astype("int16")
     df['week_of_month'] = ((df['day_of_month']-1) // 7 + 1).astype("int8")
-    df['week_of_year'] = (df.date.dt.weekofyear).astype("int8")
-    df['day_of_week'] = (df.date.dt.dayofweek + 1).astype("int8")
-    df['year'] = df.date.dt.year.astype("int32")
     df["is_wknd"] = (df.date.dt.weekday // 4).astype("int8")
     df["quarter"] = df.date.dt.quarter.astype("int8")
     df['is_month_start'] = df.date.dt.is_month_start.astype("int8")
@@ -305,7 +308,3 @@ def get_oil_holiday_data():
     oil = oil_setup()
     d = pd.merge(d, oil, how = "left", on = ["date"])
     return d
-
-# d = get_data()   
-# print(d.shape)
-# print('complete')

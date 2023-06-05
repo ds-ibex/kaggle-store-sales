@@ -65,9 +65,6 @@ def get_data():
 
     # list to process dates
     dfs_with_date = [train, test, transactions]
-    for df in dfs_with_date:
-        # convert to a datetime object
-        df['date'] = pd.to_datetime(train.date)   
     
     # add date features
     train, test, transactions = tuple(create_date_features(df) for df in dfs_with_date)
@@ -114,53 +111,39 @@ def train_val_split(train=None, val_weeks=4):
     train_cutoff = train[train['date'] < cutoff]
     val = train[train['date'] >= cutoff]
     return train_cutoff, val
-    
-
-def get_daily_sales(df):
-    """Take a dataframe, group it by date and aggregate sales
-
-    Args:
-        df (dataframe): dataframe with sales data
-
-    Returns:
-        df: aggregated dataframe with daily sales 
-    """
-    df = df.groupby(["date"]).sales.sum().reset_index()
-    df["year"] = df.date.dt.year
-    df["month"] = df.date.dt.month
-    df['day_of_week'] = df['date'].dt.dayofweek
-    df = df.set_index('date')
-    return df
 
 
 def create_date_features(df):
-    """_summary_
+    """ Create date features in a dataframe
 
     Args:
-        df (_type_): _description_
+        df (dataframe): dataframe to add features to
 
     Returns:
-        _type_: _description_
+        dataframe: a copy of the dataframe with the date features
     """
+    # turn date column into a datetime object
+    df['date'] = pd.to_datetime(df['date']) 
     df['year'] = df.date.dt.isocalendar().year.astype("int32")
     df['month'] = df.date.dt.month.astype("int8")
     df['week'] = df.date.dt.isocalendar().week.astype("int8")
+    df['day'] = df.date.dt.dayofyear.astype("int16")
+    df['quarter'] = df.date.dt.quarter.astype("int8")
+    # day of the week (1 - 7)
     df['day_of_week'] = df.date.dt.isocalendar().day.astype("int8")
     df['day_of_month'] = df.date.dt.day.astype("int8")
-    df['day_of_year'] = df.date.dt.dayofyear.astype("int16")
     df['week_of_month'] = ((df['day_of_month']-1) // 7 + 1).astype("int8")
-    df["is_wknd"] = (df.date.dt.weekday // 4).astype("int8")
-    df["quarter"] = df.date.dt.quarter.astype("int8")
+    df['is_weekend'] = (df.date.dt.weekday // 4).astype("int8")
     df['is_month_start'] = df.date.dt.is_month_start.astype("int8")
     df['is_month_end'] = df.date.dt.is_month_end.astype("int8")
     df['is_quarter_start'] = df.date.dt.is_quarter_start.astype("int8")
     df['is_quarter_end'] = df.date.dt.is_quarter_end.astype("int8")
     df['is_year_start'] = df.date.dt.is_year_start.astype("int8")
     df['is_year_end'] = df.date.dt.is_year_end.astype("int8")
-    # 0: Winter - 1: Spring - 2: Summer - 3: Fall
-    df["season"] = np.where(df.month.isin([12,1,2]), 0, 1)
-    df["season"] = np.where(df.month.isin([6,7,8]), 2, df["season"])
-    df["season"] = pd.Series(np.where(df.month.isin([9, 10, 11]), 3, df["season"])).astype("int8")
+    # 0: Winter, 1: Spring, 2: Summer, 3: Fall
+    df['season'] = np.where(df.month.isin([12,1,2]), 0, 1)
+    df['season'] = np.where(df.month.isin([6,7,8]), 2, df['season'])
+    df['season'] = pd.Series(np.where(df.month.isin([9, 10, 11]), 3, df['season'])).astype("int8")
     return df
 
 
@@ -308,3 +291,20 @@ def get_oil_holiday_data():
     oil = oil_setup()
     d = pd.merge(d, oil, how = "left", on = ["date"])
     return d
+        
+    
+def get_daily_sales(df):
+    """Take a dataframe, group it by date and aggregate sales
+
+    Args:
+        df (dataframe): dataframe with sales data
+
+    Returns:
+        df: aggregated dataframe with daily sales 
+    """
+    df = df.groupby("date").sales.sum().reset_index()
+    df["year"] = df.date.dt.year
+    df["month"] = df.date.dt.month
+    df['day_of_week'] = df['date'].dt.dayofweek
+    df = df.set_index('date')
+    return df

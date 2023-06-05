@@ -11,18 +11,20 @@ from pathlib import Path
 
 ROOT_PATH = Path(os.path.dirname(os.getcwd()))
 DATA_PATH = ROOT_PATH / 'data'
-assert 'raw' in os.listdir(DATA_PATH), 'Data directory not structured properly, see readme.md'
-
+assert 'raw' in os.listdir(DATA_PATH), 'Data directory not structured properly: kaggle-store-sales/data/raw does not exist, see readme.md for proper structure'
 RAW_PATH = DATA_PATH / 'raw'
 PROCESSED_PATH = DATA_PATH / 'processed'
 SUBMISSION_PATH = DATA_PATH / 'submissions'
 
-TRAIN_PATH = RAW_PATH / 'train.csv'
-TEST_PATH = RAW_PATH / 'test.csv'
-HOLIDAYS_PATH = RAW_PATH / 'holidays_events.csv'
-TRANSACTIONS_PATH = RAW_PATH / 'transactions.csv'
-STORES_PATH = RAW_PATH / 'stores.csv'
-OIL_PATH = RAW_PATH / 'oil.csv'
+# if the processed directory does not exist, create it
+if 'processed' not in os.listdir(DATA_PATH):
+    print(f'Creating directory: {PROCESSED_PATH}')
+    os.mkdir(PROCESSED_PATH)
+
+# if the submissions directory does not exist, create it
+if 'submissions' not in os.listdir(DATA_PATH):
+    print(f'Creating directory: {SUBMISSION_PATH}')
+    os.mkdir(SUBMISSION_PATH)
 
 """ Old code to downlaod data from kaggle, works on mac but needs changes to work on windows
 if 'data' not in os.listdir('..') or 'raw' not in os.listdir('../data'):
@@ -41,18 +43,29 @@ else:
 
 def get_data():
     """Load processed dataframes for train, test, stores, transactions
+    
+    On first load, loads them from csv files and processed the dataframes to be memory efficient.
+    Stores them in pickle files in the processed directory for faster access in the future.
+
+    On later loads, reads the dataframes from processed pickle files. 
 
     Returns:
-        tuple: four dataframes (train, test, stores, transactions)
+        tuple: the four dataframes (train, test, stores, transactions)
     """
     
-    # TODO refactor this to use pickle and the processed data sections
+    fnames = ['train', 'test', 'stores', 'transactions']
+    
+    # check if the files are in the processed directory
+    if all(f'{fname}.pkl' in os.listdir(PROCESSED_PATH) for fname in fnames):
+        print('loading pickled dataframes...')
+        return tuple(pd.read_pickle(PROCESSED_PATH / f'{fname}.pkl') for fname in fnames)
 
+    print('loading dataframes from csv files...')
     # Read data files into dataframes
-    train = pd.read_csv(TRAIN_PATH)
-    test = pd.read_csv(TEST_PATH)
-    stores = pd.read_csv(STORES_PATH)
-    transactions = pd.read_csv(TRANSACTIONS_PATH).sort_values(['store_nbr', 'date'])
+    train, test, stores, transactions = tuple(pd.read_csv(RAW_PATH / f'{fname}.csv') for fname in fnames)
+    
+    # sort transactions by store number and date
+    transactions = transactions.sort_values(['store_nbr', 'date'])
 
     # Convert to more memory efficient datatypes
 
@@ -88,7 +101,15 @@ def get_data():
     test = test.set_index('id')
     stores = stores.set_index('store_nbr')
     
-    return train, test, stores, transactions
+    dfs = (train, test, stores, transactions)
+    
+    # store the dataframes as pickle files in the processed directory
+    print('pickling data files...')
+    for df, fname in zip(dfs, fnames):
+        df.to_pickle(PROCESSED_PATH / f'{fname}.pkl')
+    
+    # return a tuple of the dataframes (train, test, stores, transactions)
+    return dfs
 
 
 def get_daily_sales(df):
@@ -121,10 +142,7 @@ def create_date_features(df):
     df['month'] = df.date.dt.month.astype("int8")
     df['day_of_month'] = df.date.dt.day.astype("int8")
     df['day_of_year'] = df.date.dt.dayofyear.astype("int16")
-    #df['week_of_month'] = (df.date.apply(lambda d: (d.day-1) // 7 + 1)).astype("int8")
     df['week_of_month'] = ((df['day_of_month']-1) // 7 + 1).astype("int8")
-
-
     df['week_of_year'] = (df.date.dt.weekofyear).astype("int8")
     df['day_of_week'] = (df.date.dt.dayofweek + 1).astype("int8")
     df['year'] = df.date.dt.year.astype("int32")
@@ -142,6 +160,7 @@ def create_date_features(df):
     df["season"] = pd.Series(np.where(df.month.isin([9, 10, 11]), 3, df["season"])).astype("int8")
     return df
 
+
 def process_holiday_events():
     """_summary_
 
@@ -151,7 +170,7 @@ def process_holiday_events():
     train, test, stores, transactions = get_data()
     
     #Import holiday data
-    holidays = pd.read_csv(HOLIDAYS_PATH)
+    holidays = pd.read_csv(RAW_PATH / 'holidays_events.csv')
     holidays["date"] = pd.to_datetime(holidays.date)
     holidays
 
@@ -269,7 +288,7 @@ def process_holiday_events():
 
 def oil_setup():
     # Import 
-    oil = pd.read_csv(OIL_PATH)
+    oil = pd.read_csv(RAW_PATH / 'oil.csv')
     oil["date"] = pd.to_datetime(oil.date)
     # Resample
     oil = oil.set_index("date").dcoilwtico.resample("D").sum().reset_index()

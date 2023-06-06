@@ -5,54 +5,50 @@ import os
 import pandas as pd
 from pathlib import Path
 
-# Define Gloabl Path Variables
-# current_directory = os.getcwd()
-# parent_directory = os.path.abspath(os.path.join(current_directory, os.pardir))
-
+# Define gloabl path variables
 ROOT_PATH = Path(os.path.dirname(os.getcwd()))
 DATA_PATH = ROOT_PATH / 'data'
-assert 'raw' in os.listdir(DATA_PATH), 'Data directory not structured properly, see readme.md'
-
+assert 'raw' in os.listdir(DATA_PATH), 'Data directory not structured properly: kaggle-store-sales/data/raw does not exist, see readme.md for proper structure'
 RAW_PATH = DATA_PATH / 'raw'
 PROCESSED_PATH = DATA_PATH / 'processed'
 SUBMISSION_PATH = DATA_PATH / 'submissions'
 
-TRAIN_PATH = RAW_PATH / 'train.csv'
-TEST_PATH = RAW_PATH / 'test.csv'
-HOLIDAYS_PATH = RAW_PATH / 'holidays_events.csv'
-TRANSACTIONS_PATH = RAW_PATH / 'transactions.csv'
-STORES_PATH = RAW_PATH / 'stores.csv'
-OIL_PATH = RAW_PATH / 'oil.csv'
+# if the processed directory does not exist, create it
+if 'processed' not in os.listdir(DATA_PATH):
+    print(f'Creating directory: {PROCESSED_PATH}')
+    os.mkdir(PROCESSED_PATH)
 
-""" Old code to downlaod data from kaggle, works on mac but needs changes to work on windows
-if 'data' not in os.listdir('..') or 'raw' not in os.listdir('../data'):
-    print('\ndownloading kaggle data...')
-    ! mkdir ../data
-    ! mkdir ../data/raw
-    ! mkdir ../data/processed
-    ! kaggle competitions download -c store-sales-time-series-forecasting
-    ! unzip store-sales-time-series-forecasting.zip
-    ! mv *.csv ../data/raw
-    ! rm store-sales-time-series-forecasting.zip
-    ! mkdir ../data/submissions
-    ! mv ../data/raw/*_submission* ../data/submissions/
-else:
-    print('kaggle data already downloaded in ../data')"""
+# if the submissions directory does not exist, create it
+if 'submissions' not in os.listdir(DATA_PATH):
+    print(f'Creating directory: {SUBMISSION_PATH}')
+    os.mkdir(SUBMISSION_PATH)
+    
 
 def get_data():
     """Load processed dataframes for train, test, stores, transactions
+    
+    On first load, loads them from csv files and processed the dataframes to be memory efficient.
+    Stores them in pickle files in the processed directory for faster access in the future.
+
+    On later loads, reads the dataframes from processed pickle files. 
 
     Returns:
-        tuple: four dataframes (train, test, stores, transactions)
+        tuple: the four dataframes (train, test, stores, transactions)
     """
     
-    # TODO refactor this to use pickle and the processed data sections
+    fnames = ['train', 'test', 'stores', 'transactions']
+    
+    # check if the files are in the processed directory
+    if all(f'{fname}.pkl' in os.listdir(PROCESSED_PATH) for fname in fnames):
+        print('loading pickled dataframes...')
+        return tuple(pd.read_pickle(PROCESSED_PATH / f'{fname}.pkl') for fname in fnames)
 
+    print('loading dataframes from csv files...')
     # Read data files into dataframes
-    train = pd.read_csv(TRAIN_PATH)
-    test = pd.read_csv(TEST_PATH)
-    stores = pd.read_csv(STORES_PATH)
-    transactions = pd.read_csv(TRANSACTIONS_PATH).sort_values(['store_nbr', 'date'])
+    train, test, stores, transactions = tuple(pd.read_csv(RAW_PATH / f'{fname}.csv') for fname in fnames)
+    
+    # sort transactions by store number and date
+    transactions = transactions.sort_values(['store_nbr', 'date'])
 
     # Convert to more memory efficient datatypes
 
@@ -69,14 +65,9 @@ def get_data():
 
     # list to process dates
     dfs_with_date = [train, test, transactions]
-    for df in dfs_with_date:
-        # convert to a datetime object
-        df['date'] = pd.to_datetime(train.date)     
-        # add in year and month
-        df['year'] = df['date'].dt.year
-        df['month'] = df['date'].dt.month
-        df['day_of_week'] = df['date'].dt.dayofweek
-    train, test, transactions = dfs_with_date
+    
+    # add date features
+    train, test, transactions = tuple(create_date_features(df) for df in dfs_with_date)
 
     # smaller floats
     train['onpromotion'] = train.onpromotion.astype('float32')
@@ -88,59 +79,73 @@ def get_data():
     test = test.set_index('id')
     stores = stores.set_index('store_nbr')
     
-    return train, test, stores, transactions
+    dfs = (train, test, stores, transactions)
+    
+    # store the dataframes as pickle files in the processed directory
+    print('pickling data files...')
+    for df, fname in zip(dfs, fnames):
+        df.to_pickle(PROCESSED_PATH / f'{fname}.pkl')
+    
+    # return a tuple of the dataframes (train, test, stores, transactions)
+    return dfs
 
 
-def get_daily_sales(df):
-    """Take a dataframe, group it by date and aggregate sales
+def train_val_split(train=None, val_weeks=4):
+    """ Split the training data into train and validation data.
+        Validation data will be the last val_weeks number of weeks from the training data.
 
     Args:
-        df (dataframe): dataframe with sales data
+        train (df, optional): training data as a dataframe. Defaults to None and loads the dataframe using get_data().
+        val_weeks (int, optional): number of weeks to set as validation data. Defaults to 4.
 
     Returns:
-        df: aggregated dataframe with daily sales 
+        tuple: train df, validation df
     """
-    df = df.groupby(["date"]).sales.sum().reset_index()
-    df["year"] = df.date.dt.year
-    df["month"] = df.date.dt.month
-    df['day_of_week'] = df['date'].dt.dayofweek
-    df = df.set_index('date')
-    return df
+    
+    # if train was not passed, take it from the get data function
+    if train is None:
+        train = get_data()[0]
+    
+    cutoff = train['date'].max() - pd.DateOffset(weeks=val_weeks)
+    
+    train_cutoff = train[train['date'] < cutoff]
+    val = train[train['date'] >= cutoff]
+    return train_cutoff, val
 
 
-# Time Related Features
 def create_date_features(df):
-    """_summary_
+    """ Create date features in a dataframe
 
     Args:
-        df (_type_): _description_
+        df (dataframe): dataframe to add features to
 
     Returns:
-        _type_: _description_
+        dataframe: a copy of the dataframe with the date features
     """
+    # turn date column into a datetime object
+    df['date'] = pd.to_datetime(df['date']) 
+    df['year'] = df.date.dt.isocalendar().year.astype("int32")
     df['month'] = df.date.dt.month.astype("int8")
+    df['week'] = df.date.dt.isocalendar().week.astype("int8")
+    df['day'] = df.date.dt.dayofyear.astype("int16")
+    df['quarter'] = df.date.dt.quarter.astype("int8")
+    # day of the week (1 - 7)
+    df['day_of_week'] = df.date.dt.isocalendar().day.astype("int8")
     df['day_of_month'] = df.date.dt.day.astype("int8")
-    df['day_of_year'] = df.date.dt.dayofyear.astype("int16")
-    #df['week_of_month'] = (df.date.apply(lambda d: (d.day-1) // 7 + 1)).astype("int8")
     df['week_of_month'] = ((df['day_of_month']-1) // 7 + 1).astype("int8")
-
-
-    df['week_of_year'] = (df.date.dt.weekofyear).astype("int8")
-    df['day_of_week'] = (df.date.dt.dayofweek + 1).astype("int8")
-    df['year'] = df.date.dt.year.astype("int32")
-    df["is_wknd"] = (df.date.dt.weekday // 4).astype("int8")
-    df["quarter"] = df.date.dt.quarter.astype("int8")
+    df['is_weekend'] = (df.date.dt.weekday // 4).astype("int8")
     df['is_month_start'] = df.date.dt.is_month_start.astype("int8")
     df['is_month_end'] = df.date.dt.is_month_end.astype("int8")
     df['is_quarter_start'] = df.date.dt.is_quarter_start.astype("int8")
     df['is_quarter_end'] = df.date.dt.is_quarter_end.astype("int8")
     df['is_year_start'] = df.date.dt.is_year_start.astype("int8")
     df['is_year_end'] = df.date.dt.is_year_end.astype("int8")
-    # 0: Winter - 1: Spring - 2: Summer - 3: Fall
-    df["season"] = np.where(df.month.isin([12,1,2]), 0, 1)
-    df["season"] = np.where(df.month.isin([6,7,8]), 2, df["season"])
-    df["season"] = pd.Series(np.where(df.month.isin([9, 10, 11]), 3, df["season"])).astype("int8")
+    # 0: Winter, 1: Spring, 2: Summer, 3: Fall
+    df['season'] = np.where(df.month.isin([12,1,2]), 0, 1)
+    df['season'] = np.where(df.month.isin([6,7,8]), 2, df['season'])
+    df['season'] = pd.Series(np.where(df.month.isin([9, 10, 11]), 3, df['season'])).astype("int8")
     return df
+
 
 def process_holiday_events():
     """_summary_
@@ -151,7 +156,7 @@ def process_holiday_events():
     train, test, stores, transactions = get_data()
     
     #Import holiday data
-    holidays = pd.read_csv(HOLIDAYS_PATH)
+    holidays = pd.read_csv(RAW_PATH / 'holidays_events.csv')
     holidays["date"] = pd.to_datetime(holidays.date)
     holidays
 
@@ -269,7 +274,7 @@ def process_holiday_events():
 
 def oil_setup():
     # Import 
-    oil = pd.read_csv(OIL_PATH)
+    oil = pd.read_csv(RAW_PATH / 'oil.csv')
     oil["date"] = pd.to_datetime(oil.date)
     # Resample
     oil = oil.set_index("date").dcoilwtico.resample("D").sum().reset_index()
@@ -286,7 +291,20 @@ def get_oil_holiday_data():
     oil = oil_setup()
     d = pd.merge(d, oil, how = "left", on = ["date"])
     return d
+        
+    
+def get_daily_sales(df):
+    """Take a dataframe, group it by date and aggregate sales
 
-# d = get_data()   
-# print(d.shape)
-# print('complete')
+    Args:
+        df (dataframe): dataframe with sales data
+
+    Returns:
+        df: aggregated dataframe with daily sales 
+    """
+    df = df.groupby("date").sales.sum().reset_index()
+    df["year"] = df.date.dt.year
+    df["month"] = df.date.dt.month
+    df['day_of_week'] = df['date'].dt.dayofweek
+    df = df.set_index('date')
+    return df

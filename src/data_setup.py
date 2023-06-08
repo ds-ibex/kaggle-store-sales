@@ -323,7 +323,7 @@ def Transform_Data_For_DT(df,SIZE:60, enable_encode:False):
         enable_encode (bool): enable the label encoder to encode the family columns
 
     Returns:
-        df: new data frame with prior data points and a target sales
+        df_train: new data frame with prior data points and a target sales
     """
     COLUMNS = ['t{}'.format(x) for x in range(SIZE)] + ['target']
     df_train= []
@@ -349,3 +349,72 @@ def Transform_Data_For_DT(df,SIZE:60, enable_encode:False):
             le=LabelEncoder()
             df_train[col]=le.fit_transform(df_train[col])
     return(df_train)
+
+def clean_train(train):
+    """
+    Removed data points filled with 0 for stores that were not opened yet
+
+    Args:
+        train (dataframe): training dataset with daily sales and store_nbr
+    Returns:
+        train: cleaned dataframe
+    """
+    train = train[~((train.store_nbr == 52) & (train.date < "2017-04-20"))]
+    train = train[~((train.store_nbr == 22) & (train.date < "2015-10-09"))]
+    train = train[~((train.store_nbr == 42) & (train.date < "2015-08-21"))]
+    train = train[~((train.store_nbr == 21) & (train.date < "2015-07-24"))]
+    train = train[~((train.store_nbr == 29) & (train.date < "2015-03-20"))]
+    train = train[~((train.store_nbr == 20) & (train.date < "2015-02-13"))]
+    train = train[~((train.store_nbr == 53) & (train.date < "2014-05-29"))]
+    train = train[~((train.store_nbr == 36) & (train.date < "2013-05-09"))]
+    return(train)
+
+def DT_features(df, enable_encode:False):
+    """
+    Create a dataframe with features for the DT modeling such as average, median, min, max,...
+    Add seasonality metrics as well (week only for the moment, more could be added at a later time)
+
+    Args:
+        df (dataframe): transformed dataframe (output of the Transform_Data_For_DT function)
+        enable_encode (bool): enable the label encoder to encode the family columns
+    Returns:
+        df_feats: new dataframe with features used to train DT
+
+    """
+    temp=df.drop(columns={'family','store_nbr'})
+    df_feats=pd.DataFrame()
+    df_feats['prev_1'] = temp.iloc[:,-2] #Here -2 as -1 is a target
+    for win in [2, 3, 5, 7, 10, 14, 21, 28, 56]: 
+        #Interval of study, big window are good against noisy data, small window perform best for sharp trend
+        tmp = temp.iloc[:,-1-win:-1]
+        #General statistics for base level
+        df_feats['mean_prev_{}'.format(win)] = tmp.mean(axis=1)
+        df_feats['median_prev_{}'.format(win)] = tmp.median(axis=1)
+        df_feats['min_prev_{}'.format(win)] = tmp.min(axis=1)
+        df_feats['max_prev_{}'.format(win)] = tmp.max(axis=1)
+        df_feats['std_prev_{}'.format(win)] = tmp.std(axis=1)
+        #Capturing trend
+        df_feats['mean_ewm_prev_{}'.format(win)] = tmp.T.ewm(com=9.5).mean().T.mean(axis=1)
+        df_feats['last_ewm_prev_{}'.format(win)] = tmp.T.ewm(com=9.5).mean().T.iloc[:,-1]
+        
+        df_feats['avg_diff_{}'.format(win)] = (tmp - tmp.shift(1, axis=1)).mean(axis=1)
+        df_feats['avg_div_{}'.format(win)] = (tmp / tmp.shift(1, axis=1)).mean(axis=1)
+        del tmp
+    for win in [2, 3, 4, 8]:
+        tmp = temp.iloc[:,-1-win*7:-1:7] #7 for week
+        #Features for weekly seasonality
+        df_feats['week_mean_prev_{}'.format(win)] = tmp.mean(axis=1)
+        df_feats['week_median_prev_{}'.format(win)] = tmp.median(axis=1)
+        df_feats['week_min_prev_{}'.format(win)] = tmp.min(axis=1)
+        df_feats['week_max_prev_{}'.format(win)] = tmp.max(axis=1)
+        df_feats['week_std_prev_{}'.format(win)] = tmp.std(axis=1)
+        del tmp
+    
+    df_feats['family']=df['family']
+    df_feats['store_nbr']=df['store_nbr']
+    if enable_encode:
+        columns= ['family', 'store_nbr']
+        for col in columns:
+            le=LabelEncoder()
+            df_feats[col]=le.fit_transform(df_feats[col])
+    return(df_feats)

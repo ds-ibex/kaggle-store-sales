@@ -4,6 +4,7 @@ import numpy as np
 import os
 import pandas as pd
 from pathlib import Path
+from sklearn.preprocessing import LabelEncoder
 
 # Define gloabl path variables
 ROOT_PATH = Path(os.path.dirname(os.getcwd()))
@@ -308,3 +309,43 @@ def get_daily_sales(df):
     df['day_of_week'] = df['date'].dt.dayofweek
     df = df.set_index('date')
     return df
+
+def Transform_Data_For_DT(df,SIZE:60, enable_encode:False):
+    """
+    Take a dataframe, and transform it to train Decision Tree models
+    -> Moving from 1 long line with time series data to many training samples with target values
+    link: https://towardsdatascience.com/approaching-time-series-with-a-tree-based-model-87c6d1fb6603
+
+    Encode the family column to be used by Decision Tree (if enable)
+    Args:
+        df (dataframe): dataframe with daily sales, family and store_nbr
+        SIZE (integer): number of prior data points you want to use to train your model
+        enable_encode (bool): enable the label encoder to encode the family columns
+
+    Returns:
+        df: new data frame with prior data points and a target sales
+    """
+    COLUMNS = ['t{}'.format(x) for x in range(SIZE)] + ['target']
+    df_train= []
+    fam_list= []
+    sto_list = []
+    family_list =df['family'].unique()
+    store_list =df['store_nbr'].unique()
+    for fam in family_list:
+        for sto in store_list:
+            tmp= df[(df['family']==fam) & (df['store_nbr']==sto)]
+            tmp=tmp.reset_index()
+            if tmp.shape[0]>0:
+                for i in range(SIZE, tmp.shape[0]):
+                    df_train.append(tmp.loc[i-SIZE:i, 'sales'].tolist())
+                    fam_list.append(fam)
+                    sto_list.append(sto)   
+    df_train = pd.DataFrame(df_train, columns=COLUMNS)
+    df_train['family']=fam_list
+    df_train['store_nbr']=sto_list
+    if enable_encode:
+        columns= ['family', 'store_nbr']
+        for col in columns:
+            le=LabelEncoder()
+            df_train[col]=le.fit_transform(df_train[col])
+    return(df_train)

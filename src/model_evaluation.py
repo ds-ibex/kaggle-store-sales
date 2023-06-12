@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_squared_log_error, r2_score
-
+import plotly.graph_objects as go
 
 def calc_root_mean_squared_error(y_true, y_pred):
     """Calculate the root mean squared error for the predicted values
@@ -46,3 +46,12 @@ def model_eval_pipeline(y_true, y_pred):
         'r2': r2_score,
     }
     return {metric: metric_function(y_true, y_pred) for metric, metric_function in metrics.items()}
+
+
+def plot_time_series_preds(time_series, preds, col):
+    fig = go.Figure()
+    fig.add_scatter(x=time_series['date'], y=time_series[col].values, name=f'{col} True')
+    fig.add_scatter(x=time_series['date'], y=preds, name=f'{col} Pred')
+    fig.update_layout(title=f'Time series {col} predictions (RMSE: {calc_root_mean_squared_error(time_series[col].values, preds):,.2f})')
+    fig.show()
+    

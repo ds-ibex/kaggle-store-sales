@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.metrics import mean_absolute_error, mean_squared_error, mean_squared_log_error, r2_score
-import plotly.graph_objects as go
+
 
 def calc_root_mean_squared_error(y_true, y_pred):
     """Calculate the root mean squared error for the predicted values
@@ -27,6 +27,20 @@ def calc_root_mean_squared_log_error(y_true, y_pred):
     """
     return np.sqrt(mean_squared_log_error(y_true, y_pred))
 
+
+def eval_hypothesis_test(hypotheses: list, p_value: float, alpha=0.05):
+    """ Evaluate a hypothesis test
+
+    Args:
+        hypotheses (list): [null hypothesis as a string, alternate hypothesis as a string]
+        p_value (float): p_value that is a result of the test
+        alpha (float, optional): confidence level that you require p to be less than to reject the null. Defaults to 0.05.
+    """
+    if p_value < alpha:
+        print(f'Reject the null hypothesis, accept alternate hypothesis: "{hypotheses[1]}" (p-value: {p_value:.4f})')
+    else:
+        print(f'Fail to reject the null hypothesis: "{hypotheses[0]}" (p-value: {p_value:.4f})')
+        
 
 def model_eval_pipeline(y_true, y_pred):
     """Evaluate the performance of the predictions of a model

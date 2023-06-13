@@ -4,6 +4,7 @@ import numpy as np
 import os
 import pandas as pd
 from pathlib import Path
+import pickle
 from sklearn.preprocessing import LabelEncoder
 
 # Define gloabl path variables
@@ -329,6 +330,7 @@ def Transform_Data_For_DT(df,SIZE:60, enable_encode:False):
     df_train= []
     fam_list= []
     sto_list = []
+    date_list=[]
     family_list =df['family'].unique()
     store_list =df['store_nbr'].unique()
     for fam in family_list:
@@ -339,15 +341,24 @@ def Transform_Data_For_DT(df,SIZE:60, enable_encode:False):
                 for i in range(SIZE, tmp.shape[0]):
                     df_train.append(tmp.loc[i-SIZE:i, 'sales'].tolist())
                     fam_list.append(fam)
-                    sto_list.append(sto)   
+                    sto_list.append(sto)
+                    date_list.append(tmp.loc[i, 'date'])
     df_train = pd.DataFrame(df_train, columns=COLUMNS)
     df_train['family']=fam_list
     df_train['store_nbr']=sto_list
+    df_train['date']=date_list
+    df_train['date']= pd.to_datetime(df_train['date'])
+    df_train["year"] = df_train.date.dt.year
+    df_train["month"] = df_train.date.dt.month
+    df_train["daynumber"] = df_train.date.dt.day
+    df_train['day_of_week'] = df_train['date'].dt.dayofweek
+    columns= ['family', 'store_nbr']
     if enable_encode:
-        columns= ['family', 'store_nbr']
+        columns= ['family']
         for col in columns:
             le=LabelEncoder()
             df_train[col]=le.fit_transform(df_train[col])
+    
     return(df_train)
 
 def clean_train(train):
@@ -367,6 +378,7 @@ def clean_train(train):
     train = train[~((train.store_nbr == 20) & (train.date < "2015-02-13"))]
     train = train[~((train.store_nbr == 53) & (train.date < "2014-05-29"))]
     train = train[~((train.store_nbr == 36) & (train.date < "2013-05-09"))]
+    train = train.reset_index()
     return(train)
 
 def DT_features(df, enable_encode:False):
@@ -381,7 +393,7 @@ def DT_features(df, enable_encode:False):
         df_feats: new dataframe with features used to train DT
 
     """
-    temp=df.drop(columns={'family','store_nbr'})
+    temp=df.drop(columns={'family','store_nbr','date','year','month','daynumber','day_of_week'})
     df_feats=pd.DataFrame()
     df_feats['prev_1'] = temp.iloc[:,-2] #Here -2 as -1 is a target
     for win in [2, 3, 5, 7, 10, 14, 21, 28, 56]: 
@@ -398,7 +410,7 @@ def DT_features(df, enable_encode:False):
         df_feats['last_ewm_prev_{}'.format(win)] = tmp.T.ewm(com=9.5).mean().T.iloc[:,-1]
         
         df_feats['avg_diff_{}'.format(win)] = (tmp - tmp.shift(1, axis=1)).mean(axis=1)
-        df_feats['avg_div_{}'.format(win)] = (tmp / tmp.shift(1, axis=1)).mean(axis=1)
+        #df_feats['avg_div_{}'.format(win)] = (tmp / tmp.shift(1, axis=1)).mean(axis=1) --Not sure of this one
         del tmp
     for win in [2, 3, 4, 8]:
         tmp = temp.iloc[:,-1-win*7:-1:7] #7 for week
@@ -412,9 +424,44 @@ def DT_features(df, enable_encode:False):
     
     df_feats['family']=df['family']
     df_feats['store_nbr']=df['store_nbr']
+    df_feats['date']=df['date']
+    df_feats['year']=df['year']
+    df_feats['month']=df['month']
+    df_feats['day']=df['daynumber']
+    df_feats['day_of_week']=df['day_of_week']
     if enable_encode:
-        columns= ['family', 'store_nbr']
+        columns= ['family']
         for col in columns:
             le=LabelEncoder()
             df_feats[col]=le.fit_transform(df_feats[col])
     return(df_feats)
+
+
+def load_model(path:Path, name:str):
+    """
+    Load a previously saved pickled model
+    Args:
+        path (string): path where the model is saved
+        name (string): name of the model you want to loan
+    Returns:
+        model: loaded model
+    """
+    model_path=os.path.join(path.resolve().as_posix(), name)
+    #model_path=path.joinpath(path, name)
+    model = pickle.load(open(model_path, 'rb'))
+    return model
+
+def save_model(path, model, name):
+    """
+    Save a model under the specified location in a pickle format
+    Args:
+        path (string): path where the model is saved
+        model: model to save
+        name (string): name of the model you want to loan
+    Returns:
+        
+    """
+    model_path=os.path.join(path.resolve().as_posix(), name)
+    pickle.dump(model, open(model_path, 'wb'))
+    print("Model has been saved in the following location",model_path)
+    return()

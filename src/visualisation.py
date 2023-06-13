@@ -121,3 +121,125 @@ def seaborn_plot_sales_by(df: pd.DataFrame, col: str) -> None:
 
     # Display the chart
     plt.show()
+
+def generate_interactive_treemap(df,top):
+    """Plot a treemap chart of sales grouped by the store_nbr,family,month.
+    Create a hierarchical datafram to use in the treemap
+
+    Args:
+        df (pd.DataFrame): _description_
+        top (int): How much stores you want to put
+    """
+    top = min(top, len(df['store_nbr'].unique().tolist()))
+    top_store =df.groupby(["store_nbr"]).sales.sum().reset_index()[:top]
+
+    hierarchical_data = df.groupby(['store_nbr', 'family', 'month']).sum().reset_index()
+    hierarchical_data=hierarchical_data[['store_nbr', 'family', 'month','sales']]
+    hierarchical_data_level_1=df.groupby(['store_nbr', 'family']).sum().reset_index()
+    hierarchical_data_level_1=hierarchical_data_level_1[['store_nbr', 'family','sales']]
+    hierarchical_data_level_0=df.groupby(['store_nbr']).sum().reset_index()
+    hierarchical_data_level_0=hierarchical_data_level_0[['store_nbr', 'sales']]
+
+    hierarchical_data = hierarchical_data[hierarchical_data['store_nbr'].isin(top_store['store_nbr'])]
+    hierarchical_data_level_1 = hierarchical_data_level_1[hierarchical_data_level_1['store_nbr'].isin(top_store['store_nbr'])]
+    hierarchical_data_level_0 = hierarchical_data_level_0[hierarchical_data_level_0['store_nbr'].isin(top_store['store_nbr'])]
+
+    hierarchical_data['total_sales']=hierarchical_data.groupby(['store_nbr', 'family'])['sales'].transform('sum')
+    hierarchical_data_level_1['total_sales']=hierarchical_data_level_1.groupby(['store_nbr'])['sales'].transform('sum')
+    hierarchical_data_level_0['total_sales']=hierarchical_data_level_0['sales'].sum()
+
+    # Creating the hierarchical dataframe
+    df_hierarchy = pd.DataFrame(columns=['ids', 'labels', 'parents', 'sales','sales_perc'])
+
+    df_hierarchy = df_hierarchy.append({
+            'ids': 'Portfolio',
+            'labels': 'Portfolio'
+        }, ignore_index=True)
+
+    for index, row in hierarchical_data_level_0.iterrows():
+        store_nbr = int(row['store_nbr'])
+        sales = row['sales']
+        sales_perc =  round(row['sales']/row['total_sales'],4)*100
+        
+        # Constructing the id, labels, and parents values
+        id_value = f"{store_nbr}"
+        labels_value = f"Store {store_nbr}"
+        parents_value = 'Portfolio'
+        
+        # Appending the row to the hierarchical dataframe
+        df_hierarchy = df_hierarchy.append({
+            'ids': id_value,
+            'labels': labels_value,
+            'parents': parents_value,
+            'sales': sales,
+            'sales_perc': sales_perc
+        }, ignore_index=True)
+
+
+    for index, row in hierarchical_data_level_1.iterrows():
+        store_nbr = int(row['store_nbr'])
+        family = row['family']
+        sales = row['sales']
+        sales_perc = round(row['sales']/row['total_sales'],4)*100
+        
+        # Constructing the id, labels, and parents values
+        id_value = f"{store_nbr}-{family}"
+        labels_value = f"{family}"
+        parents_value = f"{store_nbr}"
+        
+        # Appending the row to the hierarchical dataframe
+        df_hierarchy = df_hierarchy.append({
+            'ids': id_value,
+            'labels': labels_value,
+            'parents': parents_value,
+            'sales': sales,
+            'sales_perc': sales_perc
+        }, ignore_index=True)
+
+    # Iterating over the rows of the hierarchical data
+    for index, row in hierarchical_data.iterrows():
+        store_nbr = int(row['store_nbr'])
+        family = row['family']
+        month = row['month']
+        sales = row['sales']
+        try:
+            sales_perc = round(row['sales']/row['total_sales'],4)*100
+        except:
+            sales_perc =0
+        
+        # Constructing the id, labels, and parents values
+        id_value = f"{store_nbr}-{family}-{month}"
+        labels_value = f"Month {month}"
+        parents_value = f"{store_nbr}-{family}"
+        
+        # Appending the row to the hierarchical dataframe
+        df_hierarchy = df_hierarchy.append({
+            'ids': id_value,
+            'labels': labels_value,
+            'parents': parents_value,
+            'sales': sales,
+            'sales_perc': sales_perc
+        }, ignore_index=True)
+
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Treemap(
+        ids = df_hierarchy.ids,
+        labels = df_hierarchy.labels,
+        parents = df_hierarchy.parents,
+        maxdepth=2,
+        root_color="lightgrey",
+        values=df_hierarchy.sales,
+        textinfo='label+value+percent parent',
+        branchvalues="total",
+        marker_colorscale = 'Blues'
+
+    ))
+
+    fig.update_layout(
+        uniformtext=dict(minsize=10, mode='hide'),
+        margin = dict(t=50, l=25, r=25, b=25)
+    )
+
+    fig.show()

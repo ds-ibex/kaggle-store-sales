@@ -330,7 +330,7 @@ def Transform_Data_For_DT(df,SIZE:60, enable_encode:False):
         print('SIZE parameter is too small, pick a bigger integer')
         return()
     else:
-        COLUMNS = ['t{}'.format(x) for x in range(SIZE)] + ['target']
+        COLUMNS = ['t{}'.format(x) for x in range(SIZE-15)] + ['target']
         df_train= []
         fam_list= []
         sto_list = []
@@ -430,6 +430,7 @@ def DT_features(df, enable_encode:False):
     df_feats['family']=df['family']
     df_feats['store_nbr']=df['store_nbr']
     df_feats['date']=df['date']
+    df_feats['date']= pd.to_datetime(df_feats['date'])
     df_feats['year']=df['year']
     df_feats['month']=df['month']
     df_feats['day']=df['daynumber']

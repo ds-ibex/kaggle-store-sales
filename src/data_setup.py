@@ -11,18 +11,14 @@ DATA_PATH = ROOT_PATH / 'data'
 assert 'raw' in os.listdir(DATA_PATH), 'Data directory not structured properly: kaggle-store-sales/data/raw does not exist, see readme.md for proper structure'
 RAW_PATH = DATA_PATH / 'raw'
 PROCESSED_PATH = DATA_PATH / 'processed'
+RESULTS_PATH = DATA_PATH / 'results'
 SUBMISSION_PATH = DATA_PATH / 'submissions'
 
-# if the processed directory does not exist, create it
-if 'processed' not in os.listdir(DATA_PATH):
-    print(f'Creating directory: {PROCESSED_PATH}')
-    os.mkdir(PROCESSED_PATH)
-
-# if the submissions directory does not exist, create it
-if 'submissions' not in os.listdir(DATA_PATH):
-    print(f'Creating directory: {SUBMISSION_PATH}')
-    os.mkdir(SUBMISSION_PATH)
-    
+# check that processed, results, and submissions exist, if not create those directories
+for dir_name in ['processed', 'results', 'submissions']:
+    if dir_name not in os.listdir(DATA_PATH):
+        print(f'Creating directory: {DATA_PATH / dir_name}')
+        os.mkdir(DATA_PATH / dir_name)
 
 def get_data():
     """Load processed dataframes for train, test, stores, transactions

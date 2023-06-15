@@ -17,7 +17,6 @@ def load_model(path:Path, name:str):
         model: loaded model
     """
     model_path=os.path.join(path.resolve().as_posix(), name)
-    #model_path=path.joinpath(path, name)
     model = pickle.load(open(model_path, 'rb'))
     return model
 

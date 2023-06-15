@@ -47,11 +47,8 @@ def Transform_Data_For_DT(df,SIZE:60, enable_encode:False):
         df_train['store_nbr']=sto_list
         df_train['date']=date_list
         df_train['date']= pd.to_datetime(df_train['date'])
-        df_train["year"] = df_train.date.dt.year
-        df_train["month"] = df_train.date.dt.month
-        df_train["daynumber"] = df_train.date.dt.day
-        df_train['day_of_week'] = df_train['date'].dt.dayofweek
-        columns= ['family', 'store_nbr']
+        #LabelEncode the "Family" column
+        columns= ['family']
         if enable_encode:
             columns= ['family']
             for col in columns:
@@ -106,10 +103,26 @@ def DT_features(df, enable_encode:False):
     df_feats['store_nbr']=df['store_nbr']
     df_feats['date']=df['date']
     df_feats['date']= pd.to_datetime(df_feats['date'])
-    df_feats['year']=df['year']
-    df_feats['month']=df['month']
-    df_feats['day']=df['daynumber']
-    df_feats['day_of_week']=df['day_of_week']
+    df_feats['year'] = df.date.dt.isocalendar().year.astype("int32")
+    df_feats['month'] = df.date.dt.month.astype("int8")
+    df_feats['week'] = df.date.dt.isocalendar().week.astype("int8")
+    df_feats['day'] = df.date.dt.dayofyear.astype("int16")
+    df_feats['quarter'] = df.date.dt.quarter.astype("int8")
+    # day of the week (1 - 7)
+    df_feats['day_of_week'] = df.date.dt.isocalendar().day.astype("int8")
+    df_feats['day_of_month'] = df.date.dt.day.astype("int8")
+    df_feats['week_of_month'] = ((df['day_of_month']-1) // 7 + 1).astype("int8")
+    df_feats['is_weekend'] = (df.date.dt.weekday // 4).astype("int8")
+    df_feats['is_month_start'] = df.date.dt.is_month_start.astype("int8")
+    df_feats['is_month_end'] = df.date.dt.is_month_end.astype("int8")
+    df_feats['is_quarter_start'] = df.date.dt.is_quarter_start.astype("int8")
+    df_feats['is_quarter_end'] = df.date.dt.is_quarter_end.astype("int8")
+    df_feats['is_year_start'] = df.date.dt.is_year_start.astype("int8")
+    df_feats['is_year_end'] = df.date.dt.is_year_end.astype("int8")
+    # 0: Winter, 1: Spring, 2: Summer, 3: Fall
+    df_feats['season'] = np.where(df.month.isin([12,1,2]), 0, 1)
+    df_feats['season'] = np.where(df.month.isin([6,7,8]), 2, df['season'])
+    df_feats['season'] = pd.Series(np.where(df.month.isin([9, 10, 11]), 3, df['season'])).astype("int8")
     if enable_encode:
         columns= ['family']
         for col in columns:

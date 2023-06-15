@@ -7,7 +7,7 @@ from pathlib import Path
 import pickle
 from sklearn.preprocessing import LabelEncoder
 
-# Define gloabl path variables
+# Define global path variables
 ROOT_PATH = Path(os.path.dirname(os.getcwd()))
 DATA_PATH = ROOT_PATH / 'data'
 assert 'raw' in os.listdir(DATA_PATH), 'Data directory not structured properly: kaggle-store-sales/data/raw does not exist, see readme.md for proper structure'
@@ -443,31 +443,3 @@ def DT_features(df, enable_encode:False):
     return(df_feats)
 
 
-def load_model(path:Path, name:str):
-    """
-    Load a previously saved pickled model
-    Args:
-        path (string): path where the model is saved
-        name (string): name of the model you want to loan
-    Returns:
-        model: loaded model
-    """
-    model_path=os.path.join(path.resolve().as_posix(), name)
-    #model_path=path.joinpath(path, name)
-    model = pickle.load(open(model_path, 'rb'))
-    return model
-
-def save_model(path, model, name):
-    """
-    Save a model under the specified location in a pickle format
-    Args:
-        path (string): path where the model is saved
-        model: model to save
-        name (string): name of the model you want to loan
-    Returns:
-        
-    """
-    model_path=os.path.join(path.resolve().as_posix(), name)
-    pickle.dump(model, open(model_path, 'wb'))
-    print("Model has been saved in the following location",model_path)
-    return()

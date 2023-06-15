@@ -122,124 +122,113 @@ def seaborn_plot_sales_by(df: pd.DataFrame, col: str) -> None:
     # Display the chart
     plt.show()
 
-def generate_interactive_treemap(df,top):
+def build_hierarchical_dataframe(df:pd.DataFrame, levels, value_column, color_columns=None):
+    """
+    Build a hierarchy of levels for Sunburst or Treemap charts.
+
+    Levels are given starting from the bottom to the top of the hierarchy,
+    ie the last level corresponds to the root.
+    """
+    df_all_trees = pd.DataFrame(columns=['id', 'label','parent', 'value', 'color'])
+    for i, level in enumerate(levels):
+        dfg = df.groupby(levels[i:]).sum()
+        try:
+            dfg_inv=df.groupby(levels[i+1:]).sum()
+            dfg_inv=dfg_inv.drop(columns=['month'])
+            dfg_inv=dfg_inv.rename(columns={value_column: 'total'})
+            dfg=dfg.join(dfg_inv,on=levels[i+1:],rsuffix='_other')
+        except:
+            dfg_inv=df[value_column].sum()
+            dfg['total']=dfg_inv
+        dfg = dfg.reset_index()
+        for index, row in dfg.iterrows():
+            if i < len(levels) - 1:
+                parent = row[levels[i+1]]
+                label= row[levels[i]]
+                id = str(row[levels[i]])
+                for j in range(i+1,len(levels)):
+                    try:
+                        parent=str(row[levels[j+1]])+"-"+str(parent)
+                    except:
+                        parent=parent
+                    id=str(row[levels[j]])+"-"+str(id)
+            else:
+                parent = 'All_Stores'
+                try:
+                    label= str(int(row[levels[i]]))
+                    id = str(int(row[levels[i]]))
+                except:
+                    label= str(row[levels[i]])
+                    id = str(row[levels[i]])
+            value = row[value_column]
+            try:
+                color = row[color_columns] / row['total']
+            except:
+                color=0
+            df_all_trees = df_all_trees.append({
+                'id': id,
+                'label': label,
+                'parent': parent,
+                'value': value,
+                'color': color
+            }, ignore_index=True)
+    total = pd.Series(dict(id='All_Stores', label='All_Stores',
+                              value=df[value_column].sum(),
+                              color=1))
+    df_all_trees = df_all_trees.append(total, ignore_index=True)
+    df_all_trees['color'].fillna(0,inplace=True)
+    df_all_trees=df_all_trees.reindex(index=df_all_trees.index[::-1])
+    df_all_trees=df_all_trees.reset_index()
+    df_all_trees=df_all_trees.drop(columns=['index'])
+    return df_all_trees
+
+
+
+def generate_interactive_treemap(df,top,levels,color_columns,value_column,depth,colorscale):
     """Plot a treemap chart of sales grouped by the store_nbr,family,month.
     Create a hierarchical datafram to use in the treemap
 
     Args:
         df (pd.DataFrame): _description_
         top (int): How much stores you want to put
+        level (list of string): list of the levels, the first one in the list is the level at the bottom
+        color_columns (string): column you want to use as for your color
+        value_column (string): column you want to use as for your value and width scale
+        depth (int): depth of your tree map
+        colorscale (string): Color use for the color scale
     """
-    top = min(top, len(df['store_nbr'].unique().tolist()))
-    top_store =df.groupby(["store_nbr"]).sales.sum().reset_index()[:top]
-
+    top_20_store =df.groupby(["store_nbr"]).sales.sum().reset_index()[:top]
     hierarchical_data = df.groupby(['store_nbr', 'family', 'month']).sum().reset_index()
+    hierarchical_data = hierarchical_data[hierarchical_data['store_nbr'].isin(top_20_store['store_nbr'])]
     hierarchical_data=hierarchical_data[['store_nbr', 'family', 'month','sales']]
-    hierarchical_data_level_1=df.groupby(['store_nbr', 'family']).sum().reset_index()
-    hierarchical_data_level_1=hierarchical_data_level_1[['store_nbr', 'family','sales']]
-    hierarchical_data_level_0=df.groupby(['store_nbr']).sum().reset_index()
-    hierarchical_data_level_0=hierarchical_data_level_0[['store_nbr', 'sales']]
+    df_all_trees = build_hierarchical_dataframe(hierarchical_data, levels, value_column,color_columns)
+    max_score = df_all_trees['color'].max()
+    min_score = df_all_trees['color'].min()
+    fig2 = go.Figure()
 
-    hierarchical_data = hierarchical_data[hierarchical_data['store_nbr'].isin(top_store['store_nbr'])]
-    hierarchical_data_level_1 = hierarchical_data_level_1[hierarchical_data_level_1['store_nbr'].isin(top_store['store_nbr'])]
-    hierarchical_data_level_0 = hierarchical_data_level_0[hierarchical_data_level_0['store_nbr'].isin(top_store['store_nbr'])]
-
-    hierarchical_data['total_sales']=hierarchical_data.groupby(['store_nbr', 'family'])['sales'].transform('sum')
-    hierarchical_data_level_1['total_sales']=hierarchical_data_level_1.groupby(['store_nbr'])['sales'].transform('sum')
-    hierarchical_data_level_0['total_sales']=hierarchical_data_level_0['sales'].sum()
-
-    # Creating the hierarchical dataframe
-    df_hierarchy = pd.DataFrame(columns=['ids', 'labels', 'parents', 'sales','sales_perc'])
-
-    df_hierarchy = df_hierarchy.append({
-            'ids': 'Portfolio',
-            'labels': 'Portfolio'
-        }, ignore_index=True)
-
-    for index, row in hierarchical_data_level_0.iterrows():
-        store_nbr = int(row['store_nbr'])
-        sales = row['sales']
-        sales_perc =  round(row['sales']/row['total_sales'],4)*100
-        
-        # Constructing the id, labels, and parents values
-        id_value = f"{store_nbr}"
-        labels_value = f"Store {store_nbr}"
-        parents_value = 'Portfolio'
-        
-        # Appending the row to the hierarchical dataframe
-        df_hierarchy = df_hierarchy.append({
-            'ids': id_value,
-            'labels': labels_value,
-            'parents': parents_value,
-            'sales': sales,
-            'sales_perc': sales_perc
-        }, ignore_index=True)
-
-
-    for index, row in hierarchical_data_level_1.iterrows():
-        store_nbr = int(row['store_nbr'])
-        family = row['family']
-        sales = row['sales']
-        sales_perc = round(row['sales']/row['total_sales'],4)*100
-        
-        # Constructing the id, labels, and parents values
-        id_value = f"{store_nbr}-{family}"
-        labels_value = f"{family}"
-        parents_value = f"{store_nbr}"
-        
-        # Appending the row to the hierarchical dataframe
-        df_hierarchy = df_hierarchy.append({
-            'ids': id_value,
-            'labels': labels_value,
-            'parents': parents_value,
-            'sales': sales,
-            'sales_perc': sales_perc
-        }, ignore_index=True)
-
-    # Iterating over the rows of the hierarchical data
-    for index, row in hierarchical_data.iterrows():
-        store_nbr = int(row['store_nbr'])
-        family = row['family']
-        month = row['month']
-        sales = row['sales']
-        try:
-            sales_perc = round(row['sales']/row['total_sales'],4)*100
-        except:
-            sales_perc =0
-        
-        # Constructing the id, labels, and parents values
-        id_value = f"{store_nbr}-{family}-{month}"
-        labels_value = f"Month {month}"
-        parents_value = f"{store_nbr}-{family}"
-        
-        # Appending the row to the hierarchical dataframe
-        df_hierarchy = df_hierarchy.append({
-            'ids': id_value,
-            'labels': labels_value,
-            'parents': parents_value,
-            'sales': sales,
-            'sales_perc': sales_perc
-        }, ignore_index=True)
-
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Treemap(
-        ids = df_hierarchy.ids,
-        labels = df_hierarchy.labels,
-        parents = df_hierarchy.parents,
-        maxdepth=2,
-        root_color="lightgrey",
-        values=df_hierarchy.sales,
-        textinfo='label+value+percent parent',
+    fig2.add_trace(go.Treemap(
+        ids = df_all_trees.id,
+        labels = df_all_trees.label,
+        parents = df_all_trees.parent,
+        maxdepth=depth,
+        root_color="grey",
+        values=df_all_trees.value,
+        #textinfo='label+value+percent parent',
         branchvalues="total",
-        marker_colorscale = 'Blues'
+        textinfo='label+value+percent parent',
+        hovertemplate='<b>%{label} </b> <br> Sales: %{value}<br> Percentage of Sales: %{color:.2%}',
+        marker=dict(
+            colors=df_all_trees['color'],
+            colorscale=colorscale,
+            cmin=min_score,
+            cmax=max_score*0.75,
+            showscale=True)
 
     ))
 
-    fig.update_layout(
+    fig2.update_layout(
         uniformtext=dict(minsize=10, mode='hide'),
         margin = dict(t=50, l=25, r=25, b=25)
     )
 
-    fig.show()
+    fig2.show()

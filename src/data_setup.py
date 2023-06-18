@@ -109,6 +109,18 @@ def train_val_split(train=None, val_weeks=4):
     return train_cutoff, val
 
 
+def create_day_of_week(series):
+    """Create a series of day_of_the_week from dates
+
+    Args:
+        series (pd.Series): a series of dates
+
+    Returns:
+        series: day of the week
+    """
+    return series.dt.isocalendar().day.astype("int8")
+
+
 def create_date_features(df):
     """ Create date features in a dataframe
 
@@ -130,7 +142,7 @@ def create_date_features(df):
     df['day_of_month'] = df.date.dt.day.astype("int8")
     df['week_of_month'] = ((df['day_of_month']-1) // 7 + 1).astype("int8")
     df['is_weekend'] = (df.date.dt.weekday // 4).astype("int8")
-    df['is_month_start'] = df.date.dt.is_month_start.astype("int8")
+    df['is_month_start'] = create_day_of_week(df.date) #.dt.is_month_start.astype("int8")
     df['is_month_end'] = df.date.dt.is_month_end.astype("int8")
     df['is_quarter_start'] = df.date.dt.is_quarter_start.astype("int8")
     df['is_quarter_end'] = df.date.dt.is_quarter_end.astype("int8")

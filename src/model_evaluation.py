@@ -28,18 +28,23 @@ def calc_root_mean_squared_log_error(y_true, y_pred):
     return np.sqrt(mean_squared_log_error(y_true, y_pred))
 
 
-def eval_hypothesis_test(hypotheses: list, p_value: float, alpha=0.05):
+def eval_hypothesis_test(hypotheses: list, p_value: float, alpha=0.05) -> bool:
     """ Evaluate a hypothesis test
 
     Args:
         hypotheses (list): [null hypothesis as a string, alternate hypothesis as a string]
         p_value (float): p_value that is a result of the test
         alpha (float, optional): confidence level that you require p to be less than to reject the null. Defaults to 0.05.
+
+    Returns:
+        bool: whether we reject the null hypothesis
     """
     if p_value < alpha:
         print(f'Reject the null hypothesis, accept alternate hypothesis: "{hypotheses[1]}" (p-value: {p_value:.4f})')
+        return True
     else:
         print(f'Fail to reject the null hypothesis: "{hypotheses[0]}" (p-value: {p_value:.4f})')
+        return False
         
 
 def model_eval_pipeline(y_true, y_pred):

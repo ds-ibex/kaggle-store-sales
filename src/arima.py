@@ -121,8 +121,9 @@ class ibex_ARIMA:
         
         return validation
 
-def arima_trial(X_train, X_valid=None, predict_steps=0, pdq_order=(1, 0, 0), seasonal_order=None, plots=False, date_series=None, show_summary=False):
 
+def arima_trial(X_train, X_valid=None, predict_steps=0, pdq_order=(1, 0, 0), seasonal_order=None, plots=False, date_series=None, show_summary=False):
+    print('Obsolete - use ibex_ARIMA() class instead')
     if seasonal_order is not None:
         model = SARIMAX(X_train, order=pdq_order, seasonal_order=seasonal_order)
         fitted_arima = model.fit(disp=0)

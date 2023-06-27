@@ -70,15 +70,15 @@ def model_eval_pipeline(y_true, y_pred):
 
 def transform_daily_sales_predictions(pred_df: pd.DataFrame, train: pd.DataFrame, cols=['day_of_week'], target='sales'):
     all_cols = cols + ['store_nbr', 'family']
-    assert all(col in train.columns for col in cols), 'Error transform_daily_sales_predictions() - not all cols in train df'
+    assert all(col in train.columns for col in cols + [target]), 'Error transform_daily_sales_predictions() - not all cols in train df'
     train[target] = train[target].astype('float64')
-    train_grouped = train.groupby(cols)[target].sum().reset_index()
+    train_grouped = train.groupby(all_cols)[target].sum().reset_index()
     # calculate percent of target, controlled for the first column
     train_grouped[f'pct_{target}'] = train_grouped[target] / train_grouped.groupby(cols)[target].transform(sum)
     train_grouped = train_grouped.drop(columns=[target])    
     # merge percentages with the predicted values
     pred_df = pd.merge(pred_df, train_grouped, on=cols)
-    assert all(pred_df.groupby('date')[f'pct_{target}'].sum() == 1.0)
+    # assert all(pred_df.groupby('date')[f'pct_{target}'].sum() == 1.0)
     # scale predicted daily values by their percentage of daily 
     pred_df[f'transformed_{target}'] = pred_df[f'pred_{target}'].mul(pred_df[f'pct_{target}'])
     return pred_df

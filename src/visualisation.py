@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import seaborn as sns
 # import from model_evaluation.py, need to include the 'src.' so that the interpreter knows where to read from if this is called from a notebook
 from src.model_evaluation import calc_root_mean_squared_error
+from sklearn.preprocessing import LabelEncoder
 
 
 def plot_heatmap(df: pd.DataFrame, rows: str, cols: str, values='sales', normalize_rows=True, decimals=2) -> None:
@@ -185,7 +186,8 @@ def build_hierarchical_dataframe(df:pd.DataFrame, levels, value_column, color_co
 
 
 def generate_interactive_treemap(df,top,levels,color_columns,value_column,depth,colorscale):
-    """Plot a treemap chart of sales grouped by the store_nbr,family,month.
+    """
+    Plot a treemap chart of sales grouped by the store_nbr,family,month.
     Create a hierarchical datafram to use in the treemap
 
     Args:
@@ -232,3 +234,96 @@ def generate_interactive_treemap(df,top,levels,color_columns,value_column,depth,
     )
 
     fig2.show()
+
+def comparison_val_pred(train,df_validation, pred, mode, dim):
+    """
+    Plot an histogram to compare your validation data and your predictions.
+
+    Args:
+        training (pd.Dataframe): initial training data
+        df_validation (pd.Dataframe): validation data
+        pred (list): list of prediction from your model
+        mode (String): values or percentages to show. Need to be either 'value' or 'percentage'
+        dim (String): group by dimension
+    """
+    # Check if the mode is the right one
+
+    if mode in ['value', 'percentage']:
+        #Create base data
+        val=df_validation.rename(columns={'target':'sales'})
+        Prediction = val.copy()
+        Prediction['sales']=pred
+        family_list =train['family'].unique()
+        fam_le = pd.DataFrame(family_list, columns=['family'])
+        le=LabelEncoder()
+        fam_le['family_le']=le.fit_transform(fam_le['family'])     
+
+        ## Create data to use for Viz
+        merged_data = pd.concat([val,Prediction], axis=0,keys=['Validation','pred'])
+        merged_data = merged_data.reset_index().rename(columns={'level_0': 'Dataset','level_1': 'id'})
+        merged_data=merged_data.merge(fam_le, left_on='family', right_on='family_le')
+        print("Step 1:   " ,merged_data.head(10))
+        merged_data=merged_data.drop(columns=['family_x','family_le'])
+        merged_data=merged_data.rename(columns={'family_y':'family'})
+        print(merged_data.head(10))
+        data =merged_data.groupby(['Dataset',dim]).sum().reset_index()
+        data =data [['Dataset',dim,'sales']]
+        if dim == 'store_nbr':
+            data.astype({'store_nbr':str})
+
+        # Define colors for each category
+        colors = {'Validation': 'cornflowerblue', 'pred': 'coral'}
+
+        # Create the grouped bar chart
+        fig = go.Figure()
+
+        if mode == 'value':
+        
+            for category in data['Dataset'].unique():
+                category_data = data[data['Dataset'] == category]
+                fig.add_trace(go.Bar(
+                    x=category_data[dim],
+                    y=category_data['sales'],
+                    name=category,
+                    marker=dict(color=colors[category])
+                ))
+
+            # Customize the layout
+            fig.update_layout(
+                title=f"Sales by {dim} and Model",
+                xaxis_title=f"{dim}",
+                yaxis_title="Sales",
+                barmode='group'
+            )
+            
+        elif mode == 'percentage':
+            # Create a pivot table to calculate the sales for each category within each family
+            pivot_table = data .pivot_table(values='sales', index=dim, columns='Dataset', aggfunc='sum')
+
+            # Calculate the percentage of sales compared to category A within each family
+            for col in pivot_table.columns:
+                if col!='Validation':
+                    pivot_table[col] = pivot_table[col] / pivot_table['Validation']
+            pivot_table['Validation']=1
+            for category in pivot_table.columns:
+                fig.add_trace(go.Bar(
+                    x=pivot_table.index,
+                    y=pivot_table[category],
+                    #name=f"{category} ({pivot_table[category][0]:.1f}%)",
+                    marker=dict(color=colors[category])
+                ))
+            # Customize the layout
+            fig.update_layout(
+                title=f"Sales percentage by {dim} and Model",
+                xaxis_title=f"{dim}",
+                yaxis_title="Sales",
+                barmode='group'
+            )
+            # Format the y-axis tick labels as percentages
+            fig.update_yaxes(tickformat=".1%")
+
+        # Show the plot
+        fig.show()
+    else:
+        return("Please, select the correct mode value. Either 'value' or 'percentage'.")
+    

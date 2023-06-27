@@ -262,10 +262,8 @@ def comparison_val_pred(train,df_validation, pred, mode, dim):
         merged_data = pd.concat([val,Prediction], axis=0,keys=['Validation','pred'])
         merged_data = merged_data.reset_index().rename(columns={'level_0': 'Dataset','level_1': 'id'})
         merged_data=merged_data.merge(fam_le, left_on='family', right_on='family_le')
-        print("Step 1:   " ,merged_data.head(10))
         merged_data=merged_data.drop(columns=['family_x','family_le'])
         merged_data=merged_data.rename(columns={'family_y':'family'})
-        print(merged_data.head(10))
         data =merged_data.groupby(['Dataset',dim]).sum().reset_index()
         data =data [['Dataset',dim,'sales']]
         if dim == 'store_nbr':

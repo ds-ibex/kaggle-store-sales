@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 import seaborn as sns
 # import from model_evaluation.py, need to include the 'src.' so that the interpreter knows where to read from if this is called from a notebook
 from src.model_evaluation import calc_root_mean_squared_error
+from sklearn.preprocessing import LabelEncoder
 
 
 def plot_heatmap(df: pd.DataFrame, rows: str, cols: str, values='sales', normalize_rows=True, decimals=2) -> None:
@@ -130,3 +131,206 @@ def seaborn_plot_sales_by(df: pd.DataFrame, col: str) -> None:
 
     # Display the chart
     plt.show()
+
+def build_hierarchical_dataframe(df:pd.DataFrame, levels, value_column, color_columns=None):
+    """
+    Build a hierarchy of levels for Sunburst or Treemap charts.
+
+    Levels are given starting from the bottom to the top of the hierarchy,
+    ie the last level corresponds to the root.
+    """
+    df_all_trees = pd.DataFrame(columns=['id', 'label','parent', 'value', 'color'])
+    for i, level in enumerate(levels):
+        dfg = df.groupby(levels[i:]).sum()
+        try:
+            dfg_inv=df.groupby(levels[i+1:]).sum()
+            dfg_inv=dfg_inv.drop(columns=['month'])
+            dfg_inv=dfg_inv.rename(columns={value_column: 'total'})
+            dfg=dfg.join(dfg_inv,on=levels[i+1:],rsuffix='_other')
+        except:
+            dfg_inv=df[value_column].sum()
+            dfg['total']=dfg_inv
+        dfg = dfg.reset_index()
+        for index, row in dfg.iterrows():
+            if i < len(levels) - 1:
+                parent = row[levels[i+1]]
+                label= row[levels[i]]
+                id = str(row[levels[i]])
+                for j in range(i+1,len(levels)):
+                    try:
+                        parent=str(row[levels[j+1]])+"-"+str(parent)
+                    except:
+                        parent=parent
+                    id=str(row[levels[j]])+"-"+str(id)
+            else:
+                parent = 'All_Stores'
+                try:
+                    label= str(int(row[levels[i]]))
+                    id = str(int(row[levels[i]]))
+                except:
+                    label= str(row[levels[i]])
+                    id = str(row[levels[i]])
+            value = row[value_column]
+            try:
+                color = row[color_columns] / row['total']
+            except:
+                color=0
+            df_all_trees = df_all_trees.append({
+                'id': id,
+                'label': label,
+                'parent': parent,
+                'value': value,
+                'color': color
+            }, ignore_index=True)
+    total = pd.Series(dict(id='All_Stores', label='All_Stores',
+                              value=df[value_column].sum(),
+                              color=1))
+    df_all_trees = df_all_trees.append(total, ignore_index=True)
+    df_all_trees['color'].fillna(0,inplace=True)
+    df_all_trees=df_all_trees.reindex(index=df_all_trees.index[::-1])
+    df_all_trees=df_all_trees.reset_index()
+    df_all_trees=df_all_trees.drop(columns=['index'])
+    return df_all_trees
+
+
+
+def generate_interactive_treemap(df,top,levels,color_columns,value_column,depth,colorscale):
+    """
+    Plot a treemap chart of sales grouped by the store_nbr,family,month.
+    Create a hierarchical datafram to use in the treemap
+
+    Args:
+        df (pd.DataFrame): _description_
+        top (int): How much stores you want to put
+        level (list of string): list of the levels, the first one in the list is the level at the bottom
+        color_columns (string): column you want to use as for your color
+        value_column (string): column you want to use as for your value and width scale
+        depth (int): depth of your tree map
+        colorscale (string): Color use for the color scale
+    """
+    top_20_store =df.groupby(["store_nbr"]).sales.sum().reset_index()[:top]
+    hierarchical_data = df.groupby(['store_nbr', 'family', 'month']).sum().reset_index()
+    hierarchical_data = hierarchical_data[hierarchical_data['store_nbr'].isin(top_20_store['store_nbr'])]
+    hierarchical_data=hierarchical_data[['store_nbr', 'family', 'month','sales']]
+    df_all_trees = build_hierarchical_dataframe(hierarchical_data, levels, value_column,color_columns)
+    max_score = df_all_trees['color'].max()
+    min_score = df_all_trees['color'].min()
+    fig2 = go.Figure()
+
+    fig2.add_trace(go.Treemap(
+        ids = df_all_trees.id,
+        labels = df_all_trees.label,
+        parents = df_all_trees.parent,
+        maxdepth=depth,
+        root_color="grey",
+        values=df_all_trees.value,
+        #textinfo='label+value+percent parent',
+        branchvalues="total",
+        textinfo='label+value+percent parent',
+        hovertemplate='<b>%{label} </b> <br> Sales: %{value}<br> Percentage of Sales: %{color:.2%}',
+        marker=dict(
+            colors=df_all_trees['color'],
+            colorscale=colorscale,
+            cmin=min_score,
+            cmax=max_score*0.75,
+            showscale=True)
+
+    ))
+
+    fig2.update_layout(
+        uniformtext=dict(minsize=10, mode='hide'),
+        margin = dict(t=50, l=25, r=25, b=25)
+    )
+
+    fig2.show()
+
+def comparison_val_pred(train,df_validation, pred, mode, dim):
+    """
+    Plot an histogram to compare your validation data and your predictions.
+
+    Args:
+        training (pd.Dataframe): initial training data
+        df_validation (pd.Dataframe): validation data
+        pred (list): list of prediction from your model
+        mode (String): values or percentages to show. Need to be either 'value' or 'percentage'
+        dim (String): group by dimension
+    """
+    # Check if the mode is the right one
+
+    if mode in ['value', 'percentage']:
+        #Create base data
+        val=df_validation.rename(columns={'target':'sales'})
+        Prediction = val.copy()
+        Prediction['sales']=pred
+        family_list =train['family'].unique()
+        fam_le = pd.DataFrame(family_list, columns=['family'])
+        le=LabelEncoder()
+        fam_le['family_le']=le.fit_transform(fam_le['family'])     
+
+        ## Create data to use for Viz
+        merged_data = pd.concat([val,Prediction], axis=0,keys=['Validation','pred'])
+        merged_data = merged_data.reset_index().rename(columns={'level_0': 'Dataset','level_1': 'id'})
+        merged_data=merged_data.merge(fam_le, left_on='family', right_on='family_le')
+        merged_data=merged_data.drop(columns=['family_x','family_le'])
+        merged_data=merged_data.rename(columns={'family_y':'family'})
+        data =merged_data.groupby(['Dataset',dim]).sum().reset_index()
+        data =data [['Dataset',dim,'sales']]
+        if dim == 'store_nbr':
+            data.astype({'store_nbr':str})
+
+        # Define colors for each category
+        colors = {'Validation': 'cornflowerblue', 'pred': 'coral'}
+
+        # Create the grouped bar chart
+        fig = go.Figure()
+
+        if mode == 'value':
+        
+            for category in data['Dataset'].unique():
+                category_data = data[data['Dataset'] == category]
+                fig.add_trace(go.Bar(
+                    x=category_data[dim],
+                    y=category_data['sales'],
+                    name=category,
+                    marker=dict(color=colors[category])
+                ))
+
+            # Customize the layout
+            fig.update_layout(
+                title=f"Sales by {dim} and Model",
+                xaxis_title=f"{dim}",
+                yaxis_title="Sales",
+                barmode='group'
+            )
+            
+        elif mode == 'percentage':
+            # Create a pivot table to calculate the sales for each category within each family
+            pivot_table = data .pivot_table(values='sales', index=dim, columns='Dataset', aggfunc='sum')
+
+            # Calculate the percentage of sales compared to category A within each family
+            for col in pivot_table.columns:
+                if col!='Validation':
+                    pivot_table[col] = pivot_table[col] / pivot_table['Validation']
+            pivot_table['Validation']=1
+            for category in pivot_table.columns:
+                fig.add_trace(go.Bar(
+                    x=pivot_table.index,
+                    y=pivot_table[category], 
+                    name=f"{category}",
+                    marker=dict(color=colors[category])
+                ))
+            # Customize the layout
+            fig.update_layout(
+                title=f"Sales percentage by {dim} and Model",
+                xaxis_title=f"{dim}",
+                yaxis_title="Sales",
+                barmode='group'
+            )
+            # Format the y-axis tick labels as percentages
+            fig.update_yaxes(tickformat=".1%")
+
+        # Show the plot
+        fig.show()
+    else:
+        return("Please, select the correct mode value. Either 'value' or 'percentage'.")
+    

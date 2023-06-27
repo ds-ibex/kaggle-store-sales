@@ -16,7 +16,7 @@ import plotly.graph_objects as go
 
 from src.data_setup import create_day_of_week
 from src.visualisation import plot_time_series_preds
-from src.model_evaluation import eval_hypothesis_test
+from src.model_evaluation import eval_hypothesis_test, calc_root_mean_squared_error
 
 
 class ibex_ARIMA:
@@ -84,7 +84,7 @@ class ibex_ARIMA:
             self.test_stationarity('diff_sales', plot_rolling_average, window_size)
 
 
-    def fit(self, pdq_order=(1, 0, 0), seasonal_order=None, col='diff_sales', plot_summary=True):
+    def fit(self, pdq_order=(1, 0, 0), seasonal_order=None, col='diff_sales', plot=True, summary=False):
         if seasonal_order is not None:
             model = SARIMAX(self.train_daily_sales[col].values, order=pdq_order, seasonal_order=seasonal_order)
             self.model = model.fit(disp=0)
@@ -92,9 +92,10 @@ class ibex_ARIMA:
             model = ARIMA(self.train_daily_sales[col].values, order=pdq_order)
             self.model = model.fit()
 
-        if plot_summary:
+        if summary:
             print(self.model.summary())
-            self.model.plot_diagnostics(figsize=(16,10))
+            if plot:
+                self.model.plot_diagnostics(figsize=(16,10))
 
         # predict values on training data
         self.train_daily_sales[f'pred_{col}'] = self.model.predict(start=0, end=self.n-1)
@@ -102,7 +103,12 @@ class ibex_ARIMA:
         if col == 'diff_sales':
             self.train_daily_sales['pred_sales'] = self.train_daily_sales[f'pred_diff_sales'].cumsum()# + self.train_daily_sales['sales'].iloc[0]
         
-        plot_time_series_preds(self.train_daily_sales['date'], preds=[self.train_daily_sales['diff_sales'], self.train_daily_sales['pred_diff_sales']], col='diff_sales')
+        if plot:
+            plot_time_series_preds(self.train_daily_sales['date'], preds=[self.train_daily_sales['diff_sales'], self.train_daily_sales['pred_diff_sales']], col='diff_sales')
+        
+        diff_sales_rmse = calc_root_mean_squared_error(self.train_daily_sales['diff_sales'], self.train_daily_sales['pred_diff_sales'])
+        sales_rmse = calc_root_mean_squared_error(self.train_daily_sales['sales'], self.train_daily_sales['pred_sales'])
+        return sales_rmse, diff_sales_rmse
 
 
     def evaluate(self, validation=None) -> list:
@@ -113,14 +119,23 @@ class ibex_ARIMA:
         #     'pred_diff_sales': pred_diff_sales,
         # })
         steps = len(validation)
-
-        validation['day_of_week'] = create_day_of_week(validation['date'])
+        if 'day_of_week' not in validation.columns:
+            validation['day_of_week'] = create_day_of_week(validation['date'])
         validation['pred_diff_sales'] = self.model.predict(start=self.n, end=self.n + steps -1)
         validation['pred_sales'] = validation['pred_diff_sales'].cumsum() + self.train_daily_sales['sales'].iloc[-1]
         plot_time_series_preds(validation['date'], preds=[validation['sales'], validation['pred_sales']], col='sales')
         
         return validation
 
+    def predict(self, test_dates):
+        test = pd.DataFrame({
+            'date': test_dates,
+            'pred_diff_sales': self.model.predict(start=self.n, end=self.n + len(test_dates) - 1)
+        })
+        test['day_of_week'] = create_day_of_week(test['date'])
+        test['pred_sales'] = test['pred_diff_sales'].cumsum() + self.train_daily_sales['sales'].iloc[-1]
+        return test
+        
 
 def arima_trial(X_train, X_valid=None, predict_steps=0, pdq_order=(1, 0, 0), seasonal_order=None, plots=False, date_series=None, show_summary=False):
     print('Obsolete - use ibex_ARIMA() class instead')

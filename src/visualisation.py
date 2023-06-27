@@ -42,7 +42,7 @@ def plot_heatmap(df: pd.DataFrame, rows: str, cols: str, values='sales', normali
     fig.show()
     
 
-def plot_time_series_preds(time_series: pd.DataFrame, preds: list, col: str) -> None:
+def plot_time_series_preds(date_series, preds: list, names=['True', 'Pred'], col='Sales') -> None:
     """_summary_
 
     @Griffin complete this docstring
@@ -52,10 +52,18 @@ def plot_time_series_preds(time_series: pd.DataFrame, preds: list, col: str) -> 
         preds (list): _description_
         col (str): _description_
     """
+    # fig = go.Figure()
+    # fig.add_scatter(x=time_series['date'], y=time_series[col].values, name=f'{col} True')
+    # fig.add_scatter(x=time_series['date'], y=preds, name=f'{col} Pred')
+    # fig.update_layout(title=f'Time series {col} predictions (RMSE: {calc_root_mean_squared_error(time_series[col].values, preds):,.2f})')
+    # fig.show()
     fig = go.Figure()
-    fig.add_scatter(x=time_series['date'], y=time_series[col].values, name=f'{col} True')
-    fig.add_scatter(x=time_series['date'], y=preds, name=f'{col} Pred')
-    fig.update_layout(title=f'Time series {col} predictions (RMSE: {calc_root_mean_squared_error(time_series[col].values, preds):,.2f})')
+    for pred, name in zip(preds, names):
+        fig.add_scatter(x=date_series, y=pred, name=f'{col} {name}')
+    title_str = f'Time series {col.capitalize()} predictions'
+    if len(preds) == 2:
+        title_str += f' (RMSE: {calc_root_mean_squared_error(preds[0], preds[1]):,.2f})'
+    fig.update_layout(title=title_str)
     fig.show()
     
 
@@ -96,7 +104,8 @@ def plot_sales_by(df: pd.DataFrame, col: str) -> None:
     # turn the column into a string type so that it will get treated as categorical
     grouped[col] = grouped[col].astype('str')
     # create a bar chart from the grouped data
-    fig = px.bar(grouped, x=col, y='sales')
+    fig = px.bar(grouped, x=col, y='sales', color=col)
+    fig.update_layout(title=f'Sales by {col}')
     fig.show()
     
 

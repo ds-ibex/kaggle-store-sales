@@ -22,6 +22,7 @@ The data folder should be as follows:
 ```unix
 data/
 ├── processed/
+│
 ├── raw/
 │   ├── holidays_events.csv
 │   ├── oil.csv
@@ -29,6 +30,9 @@ data/
 │   ├── test.csv
 │   ├── train.csv
 │   └── transactions.csv
+│
+├── results/
+│
 └── submissions/
     └── sample_submission.csv
 ```

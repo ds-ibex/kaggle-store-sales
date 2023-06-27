@@ -306,8 +306,8 @@ def comparison_val_pred(train,df_validation, pred, mode, dim):
             for category in pivot_table.columns:
                 fig.add_trace(go.Bar(
                     x=pivot_table.index,
-                    y=pivot_table[category],
-                    #name=f"{category} ({pivot_table[category][0]:.1f}%)",
+                    y=pivot_table[category], 
+                    name=f"{category}",
                     marker=dict(color=colors[category])
                 ))
             # Customize the layout

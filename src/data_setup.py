@@ -4,8 +4,10 @@ import numpy as np
 import os
 import pandas as pd
 from pathlib import Path
+import pickle
+from sklearn.preprocessing import LabelEncoder
 
-# Define gloabl path variables
+# Define global path variables
 ROOT_PATH = Path(os.path.dirname(os.getcwd()))
 DATA_PATH = ROOT_PATH / 'data'
 assert 'raw' in os.listdir(DATA_PATH), 'Data directory not structured properly: kaggle-store-sales/data/raw does not exist, see readme.md for proper structure'
@@ -316,3 +318,26 @@ def get_daily_sales(df):
     df['day_of_week'] = df['date'].dt.dayofweek
     df = df.set_index('date')
     return df
+
+
+
+def clean_train(train):
+    """
+    Removed data points filled with 0 for stores that were not opened yet
+
+    Args:
+        train (dataframe): training dataset with daily sales and store_nbr
+    Returns:
+        train: cleaned dataframe
+    """
+    train = train[~((train.store_nbr == 52) & (train.date < "2017-04-20"))]
+    train = train[~((train.store_nbr == 22) & (train.date < "2015-10-09"))]
+    train = train[~((train.store_nbr == 42) & (train.date < "2015-08-21"))]
+    train = train[~((train.store_nbr == 21) & (train.date < "2015-07-24"))]
+    train = train[~((train.store_nbr == 29) & (train.date < "2015-03-20"))]
+    train = train[~((train.store_nbr == 20) & (train.date < "2015-02-13"))]
+    train = train[~((train.store_nbr == 53) & (train.date < "2014-05-29"))]
+    train = train[~((train.store_nbr == 36) & (train.date < "2013-05-09"))]
+    train = train.reset_index()
+    return(train)
+

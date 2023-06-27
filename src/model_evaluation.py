@@ -66,8 +66,8 @@ def model_eval_pipeline(y_true, y_pred):
         'r2': r2_score,
     }
     return {metric: metric_function(y_true, y_pred) for metric, metric_function in metrics.items()}
-
-
+  
+ 
 def transform_daily_sales_predictions(pred_df: pd.DataFrame, train: pd.DataFrame, cols=['day_of_week'], target='sales'):
     all_cols = cols + ['store_nbr', 'family']
     assert all(col in train.columns for col in cols + [target]), 'Error transform_daily_sales_predictions() - not all cols in train df'

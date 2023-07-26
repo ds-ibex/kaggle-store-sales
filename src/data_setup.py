@@ -4,25 +4,23 @@ import numpy as np
 import os
 import pandas as pd
 from pathlib import Path
+import pickle
+from sklearn.preprocessing import LabelEncoder
 
-# Define gloabl path variables
+# Define global path variables
 ROOT_PATH = Path(os.path.dirname(os.getcwd()))
 DATA_PATH = ROOT_PATH / 'data'
 assert 'raw' in os.listdir(DATA_PATH), 'Data directory not structured properly: kaggle-store-sales/data/raw does not exist, see readme.md for proper structure'
 RAW_PATH = DATA_PATH / 'raw'
 PROCESSED_PATH = DATA_PATH / 'processed'
+RESULTS_PATH = DATA_PATH / 'results'
 SUBMISSION_PATH = DATA_PATH / 'submissions'
 
-# if the processed directory does not exist, create it
-if 'processed' not in os.listdir(DATA_PATH):
-    print(f'Creating directory: {PROCESSED_PATH}')
-    os.mkdir(PROCESSED_PATH)
-
-# if the submissions directory does not exist, create it
-if 'submissions' not in os.listdir(DATA_PATH):
-    print(f'Creating directory: {SUBMISSION_PATH}')
-    os.mkdir(SUBMISSION_PATH)
-    
+# check that processed, results, and submissions exist, if not create those directories
+for dir_name in ['processed', 'results', 'submissions']:
+    if dir_name not in os.listdir(DATA_PATH):
+        print(f'Creating directory: {DATA_PATH / dir_name}')
+        os.mkdir(DATA_PATH / dir_name)
 
 def get_data():
     """Load processed dataframes for train, test, stores, transactions
@@ -113,6 +111,18 @@ def train_val_split(train=None, val_weeks=4):
     return train_cutoff, val
 
 
+def create_day_of_week(series):
+    """Create a series of day_of_the_week from dates
+
+    Args:
+        series (pd.Series): a series of dates
+
+    Returns:
+        series: day of the week
+    """
+    return series.dt.isocalendar().day.astype("int8")
+
+
 def create_date_features(df):
     """ Create date features in a dataframe
 
@@ -134,7 +144,7 @@ def create_date_features(df):
     df['day_of_month'] = df.date.dt.day.astype("int8")
     df['week_of_month'] = ((df['day_of_month']-1) // 7 + 1).astype("int8")
     df['is_weekend'] = (df.date.dt.weekday // 4).astype("int8")
-    df['is_month_start'] = df.date.dt.is_month_start.astype("int8")
+    df['is_month_start'] = create_day_of_week(df.date) #.dt.is_month_start.astype("int8")
     df['is_month_end'] = df.date.dt.is_month_end.astype("int8")
     df['is_quarter_start'] = df.date.dt.is_quarter_start.astype("int8")
     df['is_quarter_end'] = df.date.dt.is_quarter_end.astype("int8")
@@ -308,3 +318,26 @@ def get_daily_sales(df):
     df['day_of_week'] = df['date'].dt.dayofweek
     df = df.set_index('date')
     return df
+
+
+
+def clean_train(train):
+    """
+    Removed data points filled with 0 for stores that were not opened yet
+
+    Args:
+        train (dataframe): training dataset with daily sales and store_nbr
+    Returns:
+        train: cleaned dataframe
+    """
+    train = train[~((train.store_nbr == 52) & (train.date < "2017-04-20"))]
+    train = train[~((train.store_nbr == 22) & (train.date < "2015-10-09"))]
+    train = train[~((train.store_nbr == 42) & (train.date < "2015-08-21"))]
+    train = train[~((train.store_nbr == 21) & (train.date < "2015-07-24"))]
+    train = train[~((train.store_nbr == 29) & (train.date < "2015-03-20"))]
+    train = train[~((train.store_nbr == 20) & (train.date < "2015-02-13"))]
+    train = train[~((train.store_nbr == 53) & (train.date < "2014-05-29"))]
+    train = train[~((train.store_nbr == 36) & (train.date < "2013-05-09"))]
+    train = train.reset_index()
+    return(train)
+

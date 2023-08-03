@@ -275,6 +275,9 @@ def comparison_val_pred(train,df_validation, pred, mode, dim):
         merged_data=merged_data.rename(columns={'family_y':'family'})
         data =merged_data.groupby(['Dataset',dim]).sum().reset_index()
         data =data [['Dataset',dim,'sales']]
+        top_20 = data.groupby(dim).sum()[:20][dim].unique()
+        data = data[data[dim].isin(top_20)]
+
         if dim == 'store_nbr':
             data.astype({'store_nbr':str})
 
@@ -283,54 +286,88 @@ def comparison_val_pred(train,df_validation, pred, mode, dim):
 
         # Create the grouped bar chart
         fig = go.Figure()
+        if dim!='date':
+            if mode == 'value':
+            
+                for category in data['Dataset'].unique():
+                    category_data = data[data['Dataset'] == category]
+                    fig.add_trace(go.Bar(
+                        x=category_data[dim],
+                        y=category_data['sales'],
+                        name=category,
+                        marker=dict(color=colors[category])
+                    ))
 
-        if mode == 'value':
-        
+                # Customize the layout
+                fig.update_layout(
+                    title=f"Sales by {dim} and Model",
+                    xaxis_title=f"{dim}",
+                    yaxis_title="Sales",
+                    barmode='group'
+                )
+                
+            elif mode == 'percentage':
+                # Create a pivot table to calculate the sales for each category within each family
+                pivot_table = data .pivot_table(values='sales', index=dim, columns='Dataset', aggfunc='sum')
+
+                # Calculate the percentage of sales compared to category A within each family
+                for col in pivot_table.columns:
+                    if col!='Validation':
+                        pivot_table[col] = pivot_table[col] / pivot_table['Validation']
+                pivot_table['Validation']=1
+                for category in pivot_table.columns:
+                    fig.add_trace(go.Bar(
+                        x=pivot_table.index,
+                        y=pivot_table[category], 
+                        name=f"{category}",
+                        marker=dict(color=colors[category])
+                    ))
+                # Customize the layout
+                fig.update_layout(
+                    title=f"Sales percentage by {dim} and Model",
+                    xaxis_title=f"{dim}",
+                    yaxis_title="Sales",
+                    barmode='group'
+                )
+                # Format the y-axis tick labels as percentages
+                fig.update_yaxes(tickformat=".1%")
+        else:
+
             for category in data['Dataset'].unique():
                 category_data = data[data['Dataset'] == category]
-                fig.add_trace(go.Bar(
+                fig.add_trace(go.Line(
                     x=category_data[dim],
                     y=category_data['sales'],
                     name=category,
                     marker=dict(color=colors[category])
                 ))
 
-            # Customize the layout
+                # Customize the layout
             fig.update_layout(
                 title=f"Sales by {dim} and Model",
                 xaxis_title=f"{dim}",
                 yaxis_title="Sales",
                 barmode='group'
             )
-            
-        elif mode == 'percentage':
-            # Create a pivot table to calculate the sales for each category within each family
-            pivot_table = data .pivot_table(values='sales', index=dim, columns='Dataset', aggfunc='sum')
-
-            # Calculate the percentage of sales compared to category A within each family
-            for col in pivot_table.columns:
-                if col!='Validation':
-                    pivot_table[col] = pivot_table[col] / pivot_table['Validation']
-            pivot_table['Validation']=1
-            for category in pivot_table.columns:
-                fig.add_trace(go.Bar(
-                    x=pivot_table.index,
-                    y=pivot_table[category], 
-                    name=f"{category}",
-                    marker=dict(color=colors[category])
-                ))
-            # Customize the layout
-            fig.update_layout(
-                title=f"Sales percentage by {dim} and Model",
-                xaxis_title=f"{dim}",
-                yaxis_title="Sales",
-                barmode='group'
-            )
-            # Format the y-axis tick labels as percentages
-            fig.update_yaxes(tickformat=".1%")
-
         # Show the plot
         fig.show()
     else:
         return("Please, select the correct mode value. Either 'value' or 'percentage'.")
     
+def plot_lgb_importances(model,plot=True,num=10):
+    from matplotlib import pyplot as plt
+    import seaborn as sns
+    gain = model.feature_importance('gain')
+    feat_imp = pd.DataFrame({'feature': model.feature_name(),
+                             'split': model.feature_importance('split'),
+                             'gain': 100 * gain / gain.sum()}).sort_values('gain', ascending=False)
+    if plot:
+        plt.figure(figsize=(10, 10))
+        sns.set(font_scale=1)
+        sns.barplot(x="gain", y="feature", data=feat_imp[0:25])
+        plt.title('feature')
+        plt.tight_layout()
+        plt.show()
+    else:
+        print(feat_imp.head(num))
+    print(feat_imp.head(num))

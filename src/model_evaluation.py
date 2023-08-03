@@ -82,3 +82,17 @@ def transform_daily_sales_predictions(pred_df: pd.DataFrame, train: pd.DataFrame
     # scale predicted daily values by their percentage of daily 
     pred_df[f'transformed_{target}'] = pred_df[f'pred_{target}'].mul(pred_df[f'pct_{target}'])
     return pred_df
+
+
+## Leo's code - Potential duplicate of above
+def rmsle_func(y_true, y_pred):
+    # Define your RMSLE calculation here
+    # For example:
+    return np.sqrt(np.mean(np.power(np.log1p(y_true) - np.log1p(y_pred), 2)))
+
+def rmsle_lgbm(y_pred, data):
+    y_true = np.array(data.get_label())
+    for i in range(len(y_pred)):
+        y_pred[i]=max(0,y_pred[i])
+    score = rmsle_func(y_true, y_pred)
+    return 'rmsle', score, False

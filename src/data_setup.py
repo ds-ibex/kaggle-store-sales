@@ -15,6 +15,8 @@ RAW_PATH = DATA_PATH / 'raw'
 PROCESSED_PATH = DATA_PATH / 'processed'
 RESULTS_PATH = DATA_PATH / 'results'
 SUBMISSION_PATH = DATA_PATH / 'submissions'
+MODEL_PATH=ROOT_PATH/'models/'
+DECISIONTREE_PATH=MODEL_PATH/'decision_tree/'
 
 # check that processed, results, and submissions exist, if not create those directories
 for dir_name in ['processed', 'results', 'submissions']:
@@ -22,7 +24,8 @@ for dir_name in ['processed', 'results', 'submissions']:
         print(f'Creating directory: {DATA_PATH / dir_name}')
         os.mkdir(DATA_PATH / dir_name)
 
-def get_data():
+def get_data(clean=True): 
+    ##@Leo Update for Args
     """Load processed dataframes for train, test, stores, transactions
     
     On first load, loads them from csv files and processed the dataframes to be memory efficient.
@@ -77,6 +80,9 @@ def get_data():
     test = test.set_index('id')
     stores = stores.set_index('store_nbr')
     
+    if clean:
+        train = clean_train(train)
+
     dfs = (train, test, stores, transactions)
     
     # store the dataframes as pickle files in the processed directory
@@ -203,10 +209,14 @@ def process_holiday_events():
     local = holidays[holidays.locale == "Local"].rename({"description":"holiday_local", "locale_name":"city"}, axis = 1).drop("locale", axis = 1).drop_duplicates()
 
     # TODO can this be refactored to be a bool? (will make processing faster)
-    test['test/train'] = 'test'
-    train['test/train'] = 'train'
+    test['is_test'] = True
+    train['is_test'] = False
 
-    d = pd.merge(train.append(test), stores)
+    #Creating big dataset
+    d= train.append(test)
+    d['id']=d.index
+    # From Leo - Below you merge
+    d = pd.merge(d, stores, on= 'store_nbr') #From Leo - adding the key column to merge on
     d["store_nbr"] = d["store_nbr"].astype("int8")
 
     # National Holidays & Events
@@ -224,6 +234,7 @@ def process_holiday_events():
     events["events"] =np.where(events.events.str.contains("futbol"), "Futbol", events.events)
 
     # is there a reason we are not using an existing one hot encoder like sklearn's?
+    # From Leo - We could use a label encoder, it fits the purpose here
     def one_hot_encoder(df, nan_as_category=True):
         original_columns = list(df.columns)
         categorical_columns = df.select_dtypes(["category", "object"]).columns.tolist()
@@ -259,9 +270,10 @@ def process_holiday_events():
     he_cols = d.columns[d.columns.str.startswith("events")].tolist() + d.columns[d.columns.str.startswith("holiday")].tolist() + d.columns[d.columns.str.startswith("national")].tolist()+ d.columns[d.columns.str.startswith("local")].tolist()
     d[he_cols] = d[he_cols].astype("int8")
 
-    d[["test/train","family", "city", "state", "type"]] = d[["test/train","family", "city", "state", "type"]].astype("category")
+    d[["is_test","family", "city", "state", "type"]] = d[["is_test","family", "city", "state", "type"]].astype("category")
 
     # what are we doing here?
+    # From Leo - Is there a need to delete the variables even though they are local to the function?
     del holidays, holidays_cat, work_day, local, regional, national, events, events_cat, tr, tr1, tr2, he_cols
     gc.collect()
 
@@ -292,6 +304,10 @@ def oil_setup():
     oil["dcoilwtico"] = np.where(oil["dcoilwtico"] == 0, np.nan, oil["dcoilwtico"])
     oil["dcoilwtico_interpolated"] = oil.dcoilwtico.interpolate()
     oil['dcoilwtico_interpolated']  = oil['dcoilwtico_interpolated'].rolling( 3,center=True,min_periods=1).mean()
+    # From Leo - Take the 7 days prior lag of the mean, as we can't know the oil prices in advances
+    oil['7days_lag_dcoilwtico_interpolated'] = oil['dcoilwtico_interpolated'].shift(7)
+    #Remove the 2 other metrics, as they will be not used as features
+    oil=oil.drop(columns={'dcoilwtico_interpolated','dcoilwtico'})
 
     return oil
 

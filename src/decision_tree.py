@@ -132,7 +132,7 @@ def DT_features(df, enable_encode:False): ##@Leo Update format to have f''
             le=LabelEncoder()
             df_feats[col]=le.fit_transform(df_feats[col])"""
     #MinMaxScale on continuous columns
-    columns=[col for col in df_feats.columns if col not in ['family','city','state','type','onpromotion','date','sales']]
+    columns=[col for col in df_feats.columns if col not in ['family','city','state','type','onpromotion','date','sales','store_nbr']]
     minVec = df_feats[columns].min().copy()
     maxVec = df_feats[columns].max().copy()
     df_feats[columns]=(df_feats[columns]-minVec)/(maxVec-minVec)

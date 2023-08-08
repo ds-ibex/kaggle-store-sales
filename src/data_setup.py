@@ -83,6 +83,21 @@ def get_data(clean=True):
     if clean:
         train = clean_train(train)
 
+    train_start = train.date.min().date()
+    train_end = train.date.max().date()
+
+    # reindex training data
+    multi_idx = pd.MultiIndex.from_product(
+        [pd.date_range(train_start, train_end), train.store_nbr.unique(), train.family.unique()],
+        names=["date", "store_nbr", "family"],
+    )
+    train = train.set_index(["date", "store_nbr", "family"]).reindex(multi_idx).reset_index()
+
+    # fill missing values with 0s
+    train[["sales", "onpromotion"]] = train[["sales", "onpromotion"]].fillna(0.)
+    train.id = train.id.interpolate(method="linear") # interpolate linearly as a filler for the 'id'
+
+
     dfs = (train, test, stores, transactions)
     
     # store the dataframes as pickle files in the processed directory
@@ -174,7 +189,6 @@ def process_holiday_events():
     #Import holiday data
     holidays = pd.read_csv(RAW_PATH / 'holidays_events.csv')
     holidays["date"] = pd.to_datetime(holidays.date)
-    holidays
 
     # Transferred Holidays
     tr1 = holidays[(holidays.type == "Holiday") & (holidays.transferred == True)].drop("transferred", axis = 1).reset_index(drop = True)
@@ -208,7 +222,7 @@ def process_holiday_events():
     national = holidays[holidays.locale == "National"].rename({"description":"holiday_national"}, axis = 1).drop(["locale", "locale_name"], axis = 1).drop_duplicates()
     local = holidays[holidays.locale == "Local"].rename({"description":"holiday_local", "locale_name":"city"}, axis = 1).drop("locale", axis = 1).drop_duplicates()
 
-    # TODO can this be refactored to be a bool? (will make processing faster)
+    
     test['is_test'] = True
     train['is_test'] = False
 
@@ -302,7 +316,7 @@ def oil_setup():
     oil = oil.set_index("date").dcoilwtico.resample("D").sum().reset_index()
     # Interpolate
     oil["dcoilwtico"] = np.where(oil["dcoilwtico"] == 0, np.nan, oil["dcoilwtico"])
-    oil["dcoilwtico_interpolated"] = oil.dcoilwtico.interpolate()
+    oil["dcoilwtico_interpolated"] = oil.dcoilwtico.interpolate(method='linear',limit_direction='both')
     oil['dcoilwtico_interpolated']  = oil['dcoilwtico_interpolated'].rolling( 3,center=True,min_periods=1).mean()
     # From Leo - Take the 7 days prior lag of the mean, as we can't know the oil prices in advances
     oil['7days_lag_dcoilwtico_interpolated'] = oil['dcoilwtico_interpolated'].shift(7)
@@ -315,9 +329,32 @@ def oil_setup():
 def get_oil_holiday_data():
     d = process_holiday_events()
     oil = oil_setup()
+    transaction = transaction_setup()
     d = pd.merge(d, oil, how = "left", on = ["date"])
+    #d = pd.merge(d, transaction, how = "left", on = ["date"])
     return d
-        
+
+def transaction_setup():
+    train, test, stores, transaction = get_data()
+    # compute total sales for each store
+    store_sales = train.groupby(["date", "store_nbr"]).sales.sum().reset_index()
+
+    # reindex transaction data
+    transaction = transaction.merge(
+        store_sales,
+        on=["date", "store_nbr"],
+        how="outer",
+    ).sort_values(["date", "store_nbr"], ignore_index=True)
+
+    # fill missing values with 0s for days with zero sales
+    transaction.loc[transaction.sales.eq(0), "transactions"] = 0.
+    transaction = transaction.drop(columns=["sales"])
+
+    # fill remaining missing values using linear interpolation
+    transaction.transactions = transaction.groupby("store_nbr", group_keys=False).transactions.apply(
+        lambda x: x.interpolate(method="linear", limit_direction="both")
+    )
+    return transaction
     
 def get_daily_sales(df):
     """Take a dataframe, group it by date and aggregate sales
